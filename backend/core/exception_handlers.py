@@ -7,14 +7,16 @@
 处理顺序：
 1. AppException（及其子类）→ 使用异常自带的 message/err_code/status_code
 2. RequestValidationError（Pydantic 校验失败）→ 提取字段级错误详情
-3. IntegrityError（数据库约束冲突）→ 解析为业务友好的冲突提示
-4. Exception（兜底）→ 模糊的 500 错误，避免泄漏敏感信息
+3. StarletteHTTPException（框架层 404/405 等）→ 统一为 Result 格式
+4. IntegrityError（数据库约束冲突）→ 解析为业务友好的冲突提示
+5. Exception（兜底）→ 模糊的 500 错误，避免泄漏敏感信息
 """
 
 import logging
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from sqlalchemy.exc import IntegrityError
 from utils.exceptions import AppException
 from utils.result import Result
@@ -68,6 +70,35 @@ async def validation_exception_handler(
     result = Result.fail(errorMsg=error_message, errCode="VALIDATION_ERROR")
     return JSONResponse(
         status_code=422,
+        content=result.model_dump(),
+    )
+
+
+async def starlette_http_exception_handler(
+    request: Request, exc: StarletteHTTPException
+) -> JSONResponse:
+    """
+    处理 Starlette 框架层 HTTP 异常
+
+    捕获 FastAPI/Starlette 底层抛出的 404（路由未找到）、405（方法不允许）等异常，
+    统一转换为 Result.fail() 格式，确保所有错误响应格式一致。
+
+    例如：
+    - GET /api/nonexistent  → Starlette 404 → {"success": false, "errorMsg": "Not Found"}
+    - POST /api/health      → Starlette 405 → {"success": false, "errorMsg": "Method Not Allowed"}
+    """
+    logger.info(
+        "HTTP 异常 | path=%s | status=%s | detail=%s",
+        request.url.path,
+        exc.status_code,
+        exc.detail,
+    )
+    result = Result.fail(
+        errorMsg=str(exc.detail),
+        errCode=f"HTTP_{exc.status_code}",
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
         content=result.model_dump(),
     )
 

@@ -14,7 +14,7 @@
 
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import select, func
+from sqlalchemy import select, func, cast, String
 from sqlalchemy.orm import Session
 from models.project import ProjectModel
 from schemas.project import ProjectCreate, ProjectUpdate
@@ -54,11 +54,12 @@ def get_all(
     if status:
         stmt = stmt.where(ProjectModel.status == status)
 
-    # 技术栈过滤：检查 JSON 数组是否包含指定技术
-    # 使用 MySQL 的 JSON_CONTAINS 函数
+    # 技术栈过滤：将 JSON 数组转为字符串后检查是否包含 "tech" 精确匹配
+    # 兼容 MySQL（JSON_CONTAINS）和 SQLite（无 JSON_CONTAINS）两种方言
+    # 使用 cast + contains 实现跨数据库兼容
     if tech:
         stmt = stmt.where(
-            func.json_contains(ProjectModel.techs, f'"{tech}"')
+            cast(ProjectModel.techs, String).contains(f'"{tech}"')
         )
 
     # 分页：先按创建时间倒序排列，再截取指定页
@@ -92,7 +93,7 @@ def count_all(
 
     if tech:
         stmt = stmt.where(
-            func.json_contains(ProjectModel.techs, f'"{tech}"')
+            cast(ProjectModel.techs, String).contains(f'"{tech}"')
         )
 
     return db.execute(stmt).scalar() or 0

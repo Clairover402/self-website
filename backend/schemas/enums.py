@@ -1,4 +1,4 @@
-﻿"""
+"""
 枚举常量模块
 
 定义项目中使用的所有枚举类型。
@@ -51,4 +51,33 @@ class BlogTag(str, Enum):
     @classmethod
     def all_labels(cls) -> list[str]:
         """返回所有枚举成员的名称，供文档生成"""
+        return [member.name for member in cls]
+
+
+class AwardLevel(str, Enum):
+    """
+    奖项级别枚举
+
+    继承 str 使其可直接用于 JSON 序列化，同时保留枚举的校验能力。
+    共 9 个级别，覆盖常见奖项分类。
+    """
+
+    NATIONAL = "国家级"
+    PROVINCIAL = "省级"
+    MUNICIPAL = "市级"
+    SCHOOL = "校级"
+    FIRST_PRIZE = "一等奖"
+    SECOND_PRIZE = "二等奖"
+    THIRD_PRIZE = "三等奖"
+    EXCELLENCE = "优秀奖"
+    OTHER = "其他"
+
+    @classmethod
+    def all_values(cls) -> list[str]:
+        """返回所有枚举值（字符串列表）"""
+        return [member.value for member in cls]
+
+    @classmethod
+    def all_labels(cls) -> list[str]:
+        """返回所有枚举成员的名称"""
         return [member.name for member in cls]

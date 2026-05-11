@@ -5,6 +5,8 @@
 处理项目的 CRUD 操作，包括创建、检索、更新和删除。
 
 列表端点支持：分页（page/page_size）、搜索（search）、状态过滤（status）、技术栈过滤（tech）。
+
+资源未找到时抛出 NotFoundException，由全局异常处理器统一返回 HTTP 404 + Result 格式。
 """
 
 import math
@@ -15,6 +17,7 @@ from database.session import get_db
 from schemas.project import Project, ProjectCreate, ProjectUpdate
 from services.project_service import ProjectService
 from utils.result import Result
+from utils.exceptions import NotFoundException
 
 router = APIRouter()
 project_service = ProjectService()
@@ -64,10 +67,11 @@ async def get_project(project_id: int, db: Session = Depends(get_db)):
     根据 ID 获取项目详情
 
     project_id 为整数，FastAPI 自动从路径参数解析并校验类型。
+    资源不存在时抛出 NotFoundException，返回 HTTP 404。
     """
     project = project_service.get_project_by_id(project_id, db)
     if not project:
-        return Result.fail(errorMsg="项目未找到", errCode="PROJECT_NOT_FOUND")
+        raise NotFoundException(message="项目未找到", err_code="PROJECT_NOT_FOUND")
     return Result.ok(data=project)
 
 
@@ -92,10 +96,11 @@ async def update_project(
     更新项目（部分更新）
 
     只更新请求体中传入的非 None 字段，未传入的字段保持不变。
+    资源不存在时抛出 NotFoundException，返回 HTTP 404。
     """
     updated_project = project_service.update_project(project_id, project_update, db)
     if not updated_project:
-        return Result.fail(errorMsg="项目未找到", errCode="PROJECT_NOT_FOUND")
+        raise NotFoundException(message="项目未找到", err_code="PROJECT_NOT_FOUND")
     return Result.ok(data=updated_project)
 
 
@@ -104,9 +109,11 @@ async def delete_project(project_id: int, db: Session = Depends(get_db)):
     """
     删除项目
 
-    成功删除返回确认消息，项目不存在返回错误。
+    成功删除返回确认消息。
+    项目不存在时抛出 NotFoundException，返回 HTTP 404。
+    重复删除同一 ID 也会触发 404（幂等语义）。
     """
     success = project_service.delete_project(project_id, db)
     if not success:
-        return Result.fail(errorMsg="项目未找到", errCode="PROJECT_NOT_FOUND")
+        raise NotFoundException(message="项目未找到", err_code="PROJECT_NOT_FOUND")
     return Result.ok(data={"message": "项目删除成功"})

@@ -13,7 +13,7 @@
 
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import select, func
+from sqlalchemy import select, func, cast, String
 from sqlalchemy.orm import Session
 from models.blog import BlogModel
 from schemas.blog import BlogCreate, BlogUpdate
@@ -46,11 +46,12 @@ def get_all(
             BlogModel.title.like(like_pattern) | BlogModel.excerpt.like(like_pattern)
         )
 
-    # 标签过滤：检查 JSON 数组是否包含指定 tag
-    # 使用 MySQL 的 JSON_CONTAINS 函数，需传入带引号的 JSON 字符串值
+    # 标签过滤：将 JSON 数组转为字符串后检查是否包含 "tag" 精确匹配
+    # 兼容 MySQL（JSON_CONTAINS）和 SQLite（无 JSON_CONTAINS）两种方言
+    # 使用 cast + contains 实现跨数据库兼容
     if tag:
         stmt = stmt.where(
-            func.json_contains(BlogModel.tags, f'"{tag}"')
+            cast(BlogModel.tags, String).contains(f'"{tag}"')
         )
 
     # 分页：先按创建时间倒序排列，再截取指定页
@@ -80,7 +81,7 @@ def count_all(
 
     if tag:
         stmt = stmt.where(
-            func.json_contains(BlogModel.tags, f'"{tag}"')
+            cast(BlogModel.tags, String).contains(f'"{tag}"')
         )
 
     return db.execute(stmt).scalar() or 0

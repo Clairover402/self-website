@@ -5,6 +5,8 @@
 处理博客文章的 CRUD 操作，包括创建、检索、更新和删除。
 
 列表端点支持：分页（page/page_size）、搜索（search）、标签过滤（tag，枚举约束）。
+
+资源未找到时抛出 NotFoundException，由全局异常处理器统一返回 HTTP 404 + Result 格式。
 """
 
 import math
@@ -16,6 +18,7 @@ from schemas.blog import Blog, BlogCreate, BlogUpdate
 from schemas.enums import BlogTag
 from services.blog_service import BlogService
 from utils.result import Result
+from utils.exceptions import NotFoundException
 
 router = APIRouter()
 blog_service = BlogService()
@@ -71,10 +74,11 @@ async def get_blog(slug: str, db: Session = Depends(get_db)):
     根据 slug 获取单篇博客详情
 
     每次访问自动增加浏览量计数。
+    资源不存在时抛出 NotFoundException，由全局异常处理器返回 HTTP 404。
     """
     blog = blog_service.get_blog_by_slug(slug, db)
     if not blog:
-        return Result.fail(errorMsg="博客未找到", errCode="BLOG_NOT_FOUND")
+        raise NotFoundException(message="博客未找到", err_code="BLOG_NOT_FOUND")
     return Result.ok(data=blog)
 
 
@@ -97,10 +101,11 @@ async def update_blog(slug: str, blog_update: BlogUpdate, db: Session = Depends(
 
     只更新请求体中传入的非 None 字段。
     tags 更新时同样受 BlogTag 枚举约束。
+    资源不存在时抛出 NotFoundException，返回 HTTP 404。
     """
     updated_blog = blog_service.update_blog(slug, blog_update, db)
     if not updated_blog:
-        return Result.fail(errorMsg="博客未找到", errCode="BLOG_NOT_FOUND")
+        raise NotFoundException(message="博客未找到", err_code="BLOG_NOT_FOUND")
     return Result.ok(data=updated_blog)
 
 
@@ -109,9 +114,11 @@ async def delete_blog(slug: str, db: Session = Depends(get_db)):
     """
     删除博客文章
 
-    成功删除返回确认消息，文章不存在返回错误。
+    成功删除返回确认消息。
+    文章不存在时抛出 NotFoundException，返回 HTTP 404。
+    重复删除同一 slug 也会触发 404（幂等语义）。
     """
     success = blog_service.delete_blog(slug, db)
     if not success:
-        return Result.fail(errorMsg="博客未找到", errCode="BLOG_NOT_FOUND")
+        raise NotFoundException(message="博客未找到", err_code="BLOG_NOT_FOUND")
     return Result.ok(data={"message": "博客删除成功"})
