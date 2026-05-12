@@ -14,6 +14,7 @@ from schemas.award import Award, AwardCreate, AwardUpdate
 from schemas.enums import AwardLevel
 from services.award_service import AwardService
 from utils.result import Result
+from utils.exceptions import NotFoundException
 
 router = APIRouter()
 award_service = AwardService()
@@ -54,7 +55,7 @@ async def get_award(award_id: int, db: Session = Depends(get_db)):
     """根据 ID 获取奖项详情"""
     award = award_service.get_award_by_id(award_id, db)
     if not award:
-        return Result.fail(errorMsg="奖项未找到", errCode="AWARD_NOT_FOUND")
+        raise NotFoundException(message="奖项未找到", err_code="AWARD_NOT_FOUND")
     return Result.ok(data=award)
 
 
@@ -74,7 +75,7 @@ async def update_award(
     """更新奖项（部分更新）"""
     updated_award = award_service.update_award(award_id, award_update, db)
     if not updated_award:
-        return Result.fail(errorMsg="奖项未找到", errCode="AWARD_NOT_FOUND")
+        raise NotFoundException(message="奖项未找到", err_code="AWARD_NOT_FOUND")
     return Result.ok(data=updated_award)
 
 
@@ -83,5 +84,5 @@ async def delete_award(award_id: int, db: Session = Depends(get_db)):
     """删除奖项"""
     success = award_service.delete_award(award_id, db)
     if not success:
-        return Result.fail(errorMsg="奖项未找到", errCode="AWARD_NOT_FOUND")
+        raise NotFoundException(message="奖项未找到", err_code="AWARD_NOT_FOUND")
     return Result.ok(data={"message": "奖项删除成功"})

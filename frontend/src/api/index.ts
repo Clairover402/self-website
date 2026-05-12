@@ -62,6 +62,13 @@ export const projectApi = {
   getById: (id: string) => api.get(`/projects/${id}`),
 };
 
+/** 奖项 API */
+export const awardApi = {
+  getList: (params: PaginationParams & { search?: string; level?: string } = {}) =>
+    api.get("/awards", { params }),
+  getById: (id: string) => api.get(`/awards/${id}`),
+};
+
 /** RAG API（待二期实现） */
 export const ragApi = {
   query: (question: string) => api.post("/rag/query", { question }),

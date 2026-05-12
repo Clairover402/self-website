@@ -79,6 +79,26 @@
         </div>
       </div>
 
+      <div class="glass rounded-2xl p-8 mb-8">
+        <h3 class="text-xl font-semibold text-white mb-6 flex items-center">
+          <span class="w-8 h-8 rounded-lg bg-primary-500/20 flex items-center justify-center mr-3"><span>🏆</span></span>
+          获得奖项
+        </h3>
+        <div v-if="awards.length === 0" class="text-gray-400 text-center py-4">暂无奖项数据</div>
+        <div v-else class="space-y-3">
+          <div v-for="award in awards" :key="award.id"
+            class="flex items-center justify-between p-4 bg-dark-50/50 rounded-xl hover:bg-white/5 transition-colors duration-200">
+            <div class="flex-1 min-w-0">
+              <h4 class="text-white font-medium truncate">{{ award.title }}</h4>
+              <p class="text-gray-400 text-sm mt-0.5">{{ award.organization }} · {{ award.award_date }}</p>
+            </div>
+            <span :class="['ml-4 px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap', levelBadge(award.level)]">
+              {{ award.level }}
+            </span>
+          </div>
+        </div>
+      </div>
+
       <div class="glass rounded-2xl p-8">
         <h3 class="text-xl font-semibold text-white mb-6">联系方式</h3>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -101,37 +121,16 @@
 </template>
 
 <script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import { awardApi } from '@/api'
+
 const skills = [
-  {
-    category: '前端',
-    icon: '🎨',
-    items: ['Vue 3', 'React', 'TypeScript', 'Tailwind CSS']
-  },
-  {
-    category: '后端',
-    icon: '⚙️',
-    items: ['Python', 'Go', 'Node.js', 'FastAPI']
-  },
-  {
-    category: '数据库',
-    icon: '🗄️',
-    items: ['PostgreSQL', 'MongoDB', 'Redis', 'Qdrant']
-  },
-  {
-    category: 'DevOps',
-    icon: '🚀',
-    items: ['Docker', 'Kubernetes', 'CI/CD', 'Linux']
-  },
-  {
-    category: 'AI/ML',
-    icon: '🤖',
-    items: ['LangChain', 'TensorFlow', 'PyTorch', 'RAG']
-  },
-  {
-    category: '工具',
-    icon: '🔧',
-    items: ['Git', 'Vim', 'VS Code', 'Figma']
-  }
+  { category: '前端', icon: '🎨', items: ['Vue 3', 'React', 'TypeScript', 'Tailwind CSS'] },
+  { category: '后端', icon: '⚙️', items: ['Python', 'Go', 'Node.js', 'FastAPI'] },
+  { category: '数据库', icon: '🗄️', items: ['PostgreSQL', 'MongoDB', 'Redis', 'Qdrant'] },
+  { category: 'DevOps', icon: '🚀', items: ['Docker', 'Kubernetes', 'CI/CD', 'Linux'] },
+  { category: 'AI/ML', icon: '🤖', items: ['LangChain', 'TensorFlow', 'PyTorch', 'RAG'] },
+  { category: '工具', icon: '🔧', items: ['Git', 'Vim', 'VS Code', 'Figma'] }
 ]
 
 const contacts = [
@@ -140,4 +139,40 @@ const contacts = [
   { label: 'Twitter', value: '@developer', href: 'https://twitter.com', icon: '🐦' },
   { label: '博客', value: 'blog.example.com', href: 'https://blog.example.com', icon: '📝' }
 ]
+
+interface Award {
+  id: number
+  title: string
+  organization: string
+  award_date: string
+  level: string
+}
+
+const awards = ref<Award[]>([])
+
+onMounted(async () => {
+  try {
+    const res: any = await awardApi.getList({ page_size: 100 })
+    if (res?.success && res.data?.items) {
+      awards.value = res.data.items
+    }
+  } catch {
+    // silently fail, show empty state
+  }
+})
+
+function levelBadge(level: string): string {
+  const map: Record<string, string> = {
+    '国家级': 'bg-amber-500/20 text-amber-400 border border-amber-500/30',
+    '省级': 'bg-blue-500/20 text-blue-400 border border-blue-500/30',
+    '市级': 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30',
+    '校级': 'bg-purple-500/20 text-purple-400 border border-purple-500/30',
+    '一等奖': 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30',
+    '二等奖': 'bg-gray-500/20 text-gray-300 border border-gray-500/30',
+    '三等奖': 'bg-orange-500/20 text-orange-400 border border-orange-500/30',
+    '优秀奖': 'bg-teal-500/20 text-teal-400 border border-teal-500/30',
+    '其他': 'bg-slate-500/20 text-slate-400 border border-slate-500/30',
+  }
+  return map[level] || 'bg-slate-500/20 text-slate-400 border border-slate-500/30'
+}
 </script>
