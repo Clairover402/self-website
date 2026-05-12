@@ -11,6 +11,7 @@
 
 import math
 from typing import Optional
+from schemas.common import PaginationParams, PaginatedResult
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from database.session import get_db
@@ -23,11 +24,10 @@ router = APIRouter()
 project_service = ProjectService()
 
 
-@router.get("/", response_model=Result[dict])
+@router.get("/", response_model=Result[PaginatedResult[Project]])
 async def get_projects(
     # 分页参数：从查询字符串解析，带默认值和约束
-    page: int = Query(default=1, ge=1, description="页码（从 1 开始）"),
-    page_size: int = Query(default=10, ge=1, le=100, description="每页条数（1-100）"),
+    pagination: PaginationParams = Depends(),
     # 搜索参数：在名称和描述中模糊匹配
     search: Optional[str] = Query(default=None, description="搜索关键词"),
     # 状态过滤：精确匹配项目状态（如：进行中 / 已完成 / 维护中）
@@ -42,23 +42,20 @@ async def get_projects(
     支持组合过滤：可同时使用 search、status、tech 和分页参数。
     例如：GET /api/projects?page=1&page_size=10&status=已完成&tech=Python
     """
-    # 将页码转换为数据库 offset
-    offset = (page - 1) * page_size
-
     projects, total = project_service.get_all_projects(
-        db, offset=offset, limit=page_size, search=search, status=status, tech=tech
+        db, offset=pagination.offset, limit=pagination.limit, search=search, status=status, tech=tech
     )
 
     # 计算总页数，向上取整
-    total_pages = math.ceil(total / page_size) if total > 0 else 0
+    total_pages = math.ceil(total / pagination.page_size) if total > 0 else 0
 
-    return Result.ok(data={
-        "items": projects,
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": total_pages,
-    })
+    return Result.ok(data=PaginatedResult[Project](
+        items=projects,
+        total=total,
+        page=pagination.page,
+        page_size=pagination.page_size,
+        total_pages=total_pages,
+    ))
 
 
 @router.get("/{project_id}", response_model=Result[Project])

@@ -11,6 +11,7 @@
 
 import math
 from typing import Optional
+from schemas.common import PaginationParams, PaginatedResult
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from database.session import get_db
@@ -24,11 +25,10 @@ router = APIRouter()
 blog_service = BlogService()
 
 
-@router.get("/", response_model=Result[dict])
+@router.get("/", response_model=Result[PaginatedResult[Blog]])
 async def get_blogs(
     # 分页参数：从查询字符串解析，带默认值和约束
-    page: int = Query(default=1, ge=1, description="页码（从 1 开始）"),
-    page_size: int = Query(default=10, ge=1, le=100, description="每页条数（1-100）"),
+    pagination: PaginationParams = Depends(),
     # 搜索参数：在标题和摘要中模糊匹配
     search: Optional[str] = Query(default=None, description="搜索关键词"),
     # 标签过滤：使用 BlogTag 枚举约束，非法值会被 FastAPI 自动拒绝（返回 422）
@@ -44,28 +44,25 @@ async def get_blogs(
 
     tag 参数受 BlogTag 枚举约束，Swagger UI 提供下拉选择。
     """
-    # 将页码转换为数据库 offset
-    offset = (page - 1) * page_size
-
     # BlogTag 继承 str，可直接当字符串传给 CRUD 层
     blogs, total = blog_service.get_all_blogs(
         db,
-        offset=offset,
-        limit=page_size,
+        offset=pagination.offset,
+        limit=pagination.limit,
         search=search,
         tag=tag.value if tag else None,
     )
 
     # 计算总页数，向上取整
-    total_pages = math.ceil(total / page_size) if total > 0 else 0
+    total_pages = math.ceil(total / pagination.page_size) if total > 0 else 0
 
-    return Result.ok(data={
-        "items": blogs,
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": total_pages,
-    })
+    return Result.ok(data=PaginatedResult[Blog](
+        items=blogs,
+        total=total,
+        page=pagination.page,
+        page_size=pagination.page_size,
+        total_pages=total_pages,
+    ))
 
 
 @router.get("/{slug}", response_model=Result[Blog])

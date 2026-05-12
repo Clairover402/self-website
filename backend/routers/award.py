@@ -7,6 +7,7 @@
 
 import math
 from typing import Optional
+from schemas.common import PaginationParams, PaginatedResult
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from database.session import get_db
@@ -20,34 +21,31 @@ router = APIRouter()
 award_service = AwardService()
 
 
-@router.get("/", response_model=Result[dict])
+@router.get("/", response_model=Result[PaginatedResult[Award]])
 async def get_awards(
-    page: int = Query(default=1, ge=1, description="页码（从 1 开始）"),
-    page_size: int = Query(default=10, ge=1, le=100, description="每页条数（1-100）"),
+    pagination: PaginationParams = Depends(),
     search: Optional[str] = Query(default=None, description="搜索关键词"),
     level: Optional[AwardLevel] = Query(default=None, description="按级别过滤"),
     db: Session = Depends(get_db),
 ):
     """获取奖项列表（分页）"""
-    offset = (page - 1) * page_size
-
     awards, total = award_service.get_all_awards(
         db,
-        offset=offset,
-        limit=page_size,
+        offset=pagination.offset,
+        limit=pagination.limit,
         search=search,
         level=level.value if level else None,
     )
 
-    total_pages = math.ceil(total / page_size) if total > 0 else 0
+    total_pages = math.ceil(total / pagination.page_size) if total > 0 else 0
 
-    return Result.ok(data={
-        "items": awards,
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": total_pages,
-    })
+    return Result.ok(data=PaginatedResult[Award](
+        items=awards,
+        total=total,
+        page=pagination.page,
+        page_size=pagination.page_size,
+        total_pages=total_pages,
+    ))
 
 
 @router.get("/{award_id}", response_model=Result[Award])

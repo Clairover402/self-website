@@ -1,4 +1,4 @@
-# AGENTS.md
+﻿# AGENTS.md
 
 ## 项目：RAG 个人网站
 
@@ -22,7 +22,7 @@ npm run preview  # 预览
 ### 后端（端口 8000）
 ```bash
 cd backend && uvicorn main:app --reload --port 8000
-cd backend && pip install -e .  # 安装依赖
+cd backend && pip install -e .  # 安装依赖（使用 pyproject.toml）
 ```
 
 API 文档：
@@ -37,28 +37,44 @@ API 文档：
 `stores/theme.ts` 在 `<html>` 上添加/移除 `light` class，但 Tailwind `darkMode: 'class'` 需要 `dark` class 才能触发深色样式。当前深色模式不生效。修复方向：store 应切换 `dark` class 而非 `light`。
 
 ### 前端 Views 使用 Mock 数据
-`BlogView.vue` 和 `ProjectsView.vue` 目前使用硬编码的本地数据，未调用后端 API。前端 API 层（`api/index.ts`）已就绪，需替换 mock 数据为真实 API 调用。
+`BlogView.vue` 和 `ProjectsView.vue` 目前使用硬编码的本地数据，未调用后端 API。前端 API 层（`api/index.ts`）已就绪，包含 `blogApi`、`projectApi`、`awardApi`，需替换 mock 数据为真实 API 调用。
+
+## 项目文档
+
+| 文件 | 描述 |
+|------|------|
+| `SPEC.md` | 项目规格文档（定位、设计规范、功能模块、API 设计、SEO 配置） |
+| `docs/DEVELOPMENT.md` | 开发指南（环境要求、启动步骤、添加页面/组件/接口） |
+| `docs/README.md` | 项目自述文件 |
+| `AGENTS.md` | AI 编码助手指南（本文档） |
 
 ## 文件布局
 
 ```
 frontend/src/
-├── api/          — Axios 封装，blogApi / projectApi / ragApi
+├── api/          — Axios 封装，blogApi / projectApi / awardApi / ragApi
+├── assets/       — 静态资源（styles/ 全局样式）
 ├── components/   — NavBar.vue, FooterBar.vue
 ├── composables/  — useSEO.ts
-├── router/       — 8 条路由
+├── router/       — 8 条路由（首页/博客/项目/关于/RAG）
 ├── stores/       — theme.ts
+├── utils/        — 工具函数（预留，当前为空）
 └── views/        — 8 个页面组件
 
 backend/
 ├── main.py                        — FastAPI 入口，注册中间件/异常处理器/路由/lifespan
-├── routers/                       — blog.py, project.py, rag.py, health.py
+├── routers/                       — blog.py, project.py, rag.py, health.py, award.py
 ├── services/                      — 业务逻辑层，ORM → Schema 转换
-├── models/                        — SQLAlchemy ORM 实体（BlogModel, ProjectModel）
+│   ├── blog_service.py, project_service.py, rag_service.py
+│   └── award_service.py
+├── models/                        — SQLAlchemy ORM 实体
+│   ├── blog.py, project.py
+│   └── award.py
 ├── schemas/                       — Pydantic v2 请求/响应 Schema
 │   ├── blog.py, project.py, rag.py
+│   ├── award.py
 │   ├── common.py                  — PaginationParams, PaginatedResult[T]
-│   └── enums.py                   — BlogTag 枚举（10 个标签）
+│   └── enums.py                   — BlogTag 枚举（10 个标签）+ AwardLevel 枚举（9 个级别）
 ├── core/
 │   ├── config.py                  — 加载 .env（含 DATABASE_URL，默认 MySQL）
 │   ├── exception_handlers.py      — 全局异常 → Result.fail 转换器
@@ -67,7 +83,11 @@ backend/
 │   ├── result.py                  — 统一响应 Result[T]
 │   └── exceptions.py              — AppException / NotFoundException / ConflictException 等
 ├── database/                      — engine.py, session.py, base.py（SQLAlchemy 连接管理）
-└── crud/                          — blog.py, project.py（SQLAlchemy 2.0 select 风格）
+├── crud/                          — blog.py, project.py, award.py（SQLAlchemy 2.0 select 风格）
+├── config/                        — 额外配置（预留，当前为空）
+├── .env                           — 环境变量（APP_NAME, DATABASE_URL, DEBUG 等）
+├── pyproject.toml                 — Python 项目配置与依赖
+└── self_website.db                — 本地 SQLite 数据库文件（开发时可能存在，生产使用 MySQL）
 ```
 
 ## API 端点
@@ -77,19 +97,41 @@ backend/
 {"success": true, "data": T, "total": null, "errorMsg": null, "errCode": null}
 ```
 
+### 健康检查
+
 | 方法 | 路径 | 查询参数 | 描述 |
 |------|------|----------|------|
 | GET | `/api/health` | — | 健康检查 |
+
+### 博客（Blog）
+
+| 方法 | 路径 | 查询参数 | 描述 |
+|------|------|----------|------|
 | GET | `/api/blogs` | `page, page_size, search, tag` | 博客列表（分页 + 搜索 + 标签过滤） |
 | GET | `/api/blogs/{slug}` | — | 博客详情（自动 +1 浏览量） |
 | POST | `/api/blogs` | — | 创建博客（tags 受 BlogTag 枚举约束） |
 | PUT | `/api/blogs/{slug}` | — | 更新博客（部分更新） |
 | DELETE | `/api/blogs/{slug}` | — | 删除博客 |
+
+### 项目（Project）
+
+| 方法 | 路径 | 查询参数 | 描述 |
+|------|------|----------|------|
 | GET | `/api/projects` | `page, page_size, search, status, tech` | 项目列表（分页 + 搜索 + 过滤） |
 | GET | `/api/projects/{id}` | — | 项目详情 |
 | POST | `/api/projects` | — | 创建项目 |
 | PUT | `/api/projects/{id}` | — | 更新项目（部分更新） |
 | DELETE | `/api/projects/{id}` | — | 删除项目 |
+
+### 奖项（Award）
+
+| 方法 | 路径 | 查询参数 | 描述 |
+|------|------|----------|------|
+| GET | `/api/awards` | `page, page_size, search, level` | 奖项列表（分页 + 搜索 + 级别过滤） |
+| GET | `/api/awards/{award_id}` | — | 奖项详情 |
+| POST | `/api/awards` | — | 创建奖项 |
+| PUT | `/api/awards/{award_id}` | — | 更新奖项（部分更新） |
+| DELETE | `/api/awards/{award_id}` | — | 删除奖项 |
 
 RAG 端点（`/api/rag/*`）仅为桩代码，二期实现。
 
@@ -113,9 +155,15 @@ RAG 端点（`/api/rag/*`）仅为桩代码，二期实现。
 
 定义于 `schemas/enums.py`，创建/更新博客时 tags 必须从此枚举中选择。
 
+### AwardLevel 枚举（9 个级别）
+
+`国家级` / `省级` / `市级` / `校级` / `一等奖` / `二等奖` / `三等奖` / `优秀奖` / `其他`
+
+定义于 `schemas/enums.py`，创建/更新奖项时 level 必须从此枚举中选择。
+
 ## 关键约束
 
-- **数据库**：SQLAlchemy ORM + MySQL（开发），配置 `DATABASE_URL` 可切换
+- **数据库**：SQLAlchemy ORM + MySQL（开发），配置 `DATABASE_URL` 可切换（.env 中默认 `mysql+pymysql://root:123456@localhost:3306/self_website`）
 - **分层架构**：`Router → Service → CRUD → ORM Model → Database`
 - **CRUD 风格**：SQLAlchemy 2.0 `select()` 语句，非旧版 `session.query()`
 - **统一响应**：所有 API 返回 `Result[T]` 格式
