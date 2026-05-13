@@ -33,11 +33,9 @@ API 文档：
 
 ## 已知问题
 
-### 主题切换 Bug
-`stores/theme.ts` 在 `<html>` 上添加/移除 `light` class，但 Tailwind `darkMode: 'class'` 需要 `dark` class 才能触发深色样式。当前深色模式不生效。修复方向：store 应切换 `dark` class 而非 `light`。
-
-### 前端 Views 使用 Mock 数据
-`BlogView.vue` 和 `ProjectsView.vue` 目前使用硬编码的本地数据，未调用后端 API。前端 API 层（`api/index.ts`）已就绪，包含 `blogApi`、`projectApi`、`awardApi`，需替换 mock 数据为真实 API 调用。
+_当前无已知待修复问题。以下问题已解决：_
+- ~~主题切换 Bug~~ — 已修复：`stores/theme.ts` 现在正确切换 `dark` class。
+- ~~前端 Views 使用 Mock 数据~~ — 已修复：`BlogView.vue` 和 `ProjectsView.vue` 已接入真实 API。
 
 ## 项目文档
 
@@ -54,29 +52,30 @@ API 文档：
 frontend/src/
 ├── api/          — Axios 封装，blogApi / projectApi / awardApi / ragApi
 ├── assets/       — 静态资源（styles/ 全局样式）
-├── components/   — NavBar.vue, FooterBar.vue
+├── components/   — NavBar.vue, FooterBar.vue, SkillRadar.vue
 ├── composables/  — useSEO.ts
-├── router/       — 8 条路由（首页/博客/项目/关于/RAG）
+├── router/       — 9 条路由（首页/博客/项目/关于/RAG/管理后台）
 ├── stores/       — theme.ts
 ├── utils/        — 工具函数（预留，当前为空）
-└── views/        — 8 个页面组件
+└── views/        — 9 个页面组件
 
 backend/
 ├── main.py                        — FastAPI 入口，注册中间件/异常处理器/路由/lifespan
-├── routers/                       — blog.py, project.py, rag.py, health.py, award.py
+├── routers/                       — blog.py, project.py, rag.py, health.py, award.py, admin.py, contact.py
 ├── services/                      — 业务逻辑层，ORM → Schema 转换
 │   ├── blog_service.py, project_service.py, rag_service.py
 │   └── award_service.py
 ├── models/                        — SQLAlchemy ORM 实体
-│   ├── blog.py, project.py
-│   └── award.py
+│   ├── blog.py, project.py, award.py
+│   └── contact.py
 ├── schemas/                       — Pydantic v2 请求/响应 Schema
-│   ├── blog.py, project.py, rag.py
-│   ├── award.py
+│   ├── blog.py, project.py, rag.py, award.py
+│   ├── contact.py
 │   ├── common.py                  — PaginationParams, PaginatedResult[T]
 │   └── enums.py                   — BlogTag 枚举（10 个标签）+ AwardLevel 枚举（9 个级别）
 ├── core/
 │   ├── config.py                  — 加载 .env（含 DATABASE_URL，默认 MySQL）
+│   ├── auth.py                    — JWT 创建/验证工具（python-jose）
 │   ├── exception_handlers.py      — 全局异常 → Result.fail 转换器
 │   └── logging_config.py          — 结构化控制台日志
 ├── utils/
@@ -85,7 +84,8 @@ backend/
 ├── database/                      — engine.py, session.py, base.py（SQLAlchemy 连接管理）
 ├── crud/                          — blog.py, project.py, award.py（SQLAlchemy 2.0 select 风格）
 ├── config/                        — 额外配置（预留，当前为空）
-├── .env                           — 环境变量（APP_NAME, DATABASE_URL, DEBUG 等）
+├── seed.py                        — 数据库种子脚本（Blog/Project/Award 示例数据）
+├── .env                           — 环境变量（APP_NAME, DATABASE_URL, DEBUG, ADMIN_SECRET, ADMIN_TOKEN）
 ├── pyproject.toml                 — Python 项目配置与依赖
 └── self_website.db                — 本地 SQLite 数据库文件（开发时可能存在，生产使用 MySQL）
 ```
@@ -133,6 +133,30 @@ backend/
 | PUT | `/api/awards/{award_id}` | — | 更新奖项（部分更新） |
 | DELETE | `/api/awards/{award_id}` | — | 删除奖项 |
 
+### 联系表单（Contact）
+
+| 方法 | 路径 | 查询参数 | 描述 |
+|------|------|----------|------|
+| POST | `/api/contact/` | — | 提交联系表单（公开，无需认证） |
+
+### 管理后台（Admin）— JWT 保护
+
+| 方法 | 路径 | 查询参数 | 描述 |
+|------|------|----------|------|
+| POST | `/api/admin/login` | — | 管理员登录（返回 JWT token） |
+| POST | `/api/admin/blogs` | — | 创建博客 |
+| PUT | `/api/admin/blogs/{slug}` | — | 更新博客 |
+| DELETE | `/api/admin/blogs/{slug}` | — | 删除博客 |
+| POST | `/api/admin/projects` | — | 创建项目 |
+| PUT | `/api/admin/projects/{id}` | — | 更新项目 |
+| DELETE | `/api/admin/projects/{id}` | — | 删除项目 |
+| POST | `/api/admin/awards` | — | 创建奖项 |
+| PUT | `/api/admin/awards/{id}` | — | 更新奖项 |
+| DELETE | `/api/admin/awards/{id}` | — | 删除奖项 |
+| GET | `/api/admin/contacts` | — | 查看所有联系表单提交 |
+
+管理后台端点需 `Authorization: Bearer <token>` 头部。
+
 RAG 端点（`/api/rag/*`）仅为桩代码，二期实现。
 
 ### 列表分页响应格式
@@ -169,5 +193,6 @@ RAG 端点（`/api/rag/*`）仅为桩代码，二期实现。
 - **统一响应**：所有 API 返回 `Result[T]` 格式
 - **异常处理**：全局异常处理器将 AppException / RequestValidationError / IntegrityError 统一转为 Result.fail()
 - **日志**：启动时自动初始化，格式 `[时间] [模块] [级别] 消息`
-- **无安全**：CORS `allow_origins=["*"]`，无认证中间件
+- **安全**：公开端点无认证；管理后台（`/api/admin/*`）使用 JWT Bearer token（`core/auth.py`，python-jose HS256）
+- **CORS**：`allow_origins=["*"]`
 - **`@` 别名**：解析到 `frontend/src/`

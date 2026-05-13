@@ -1,0 +1,14 @@
+[
+  {
+    "question": "什么是 RAG 技术？",
+    "ground_truth": "RAG（Retrieval Augmented Generation）是一种结合信息检索和文本生成的技术架构，通过从外部知识库检索相关文档来增强大语言模型的生成质量。"
+  },
+  {
+    "question": "这个网站使用了哪些前端技术？",
+    "ground_truth": "网站前端使用 Vue 3、Vite、TypeScript、Tailwind CSS、Pinia 和 Vue Router 4 构建。"
+  },
+  {
+    "question": "后端 API 框架是什么？",
+    "ground_truth": "后端使用 Python FastAPI 框架，配合 SQLAlchemy ORM 和 MySQL 数据库。"
+  }
+]
