@@ -1,12 +1,12 @@
-﻿"""
-RAG ������վ API �����
+"""
+RAG 个人网站 API 入口
 
-��ģ����Ϊ FastAPI Ӧ�õ�����ڣ����ú������á��м����·�ɡ�
+该模块为 FastAPI 应用的入口点，负责应用配置、中间件和路由注册。
 
-������
+启动命令：
     uvicorn main:app --reload --port 8000
 
-API �ĵ���
+API 文档：
     Swagger UI:  http://localhost:8000/api/docs
     ReDoc:       http://localhost:8000/api/redoc
 """
@@ -28,38 +28,27 @@ from core.exception_handlers import (
     generic_exception_handler,
 )
 from database.engine import init_db
-from routers import blog, project, rag, health, award
+from routers import blog, project, rag, health, award, contact, admin
 from utils.exceptions import AppException
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Ӧ���������ڹ���
-
-    ���ʱ����ʼ����־ϵͳ��Ȼ���ʼ�����ݿ��ṹ��
-    create_all ֻ�������ڵı����Ӱ���������ݡ�
-    """
-    # ��ʼ����־ϵͳ����־������ settings.DEBUG ����
     setup_logging(debug=settings.DEBUG)
-    # ��ʼ�����ݿ��ṹ
     init_db()
     yield
 
 
-# ���� FastAPI Ӧ��ʵ��
 app = FastAPI(
     title=settings.APP_NAME,
-    description="������Ʒ�� + �������� + AI ˽��֪ʶ�⣨RAG������һ�ĸ߶˸��˹������ API",
+    description="个人作品集 + 技术博客 + AI 私有知识库（RAG）于一体的高端个人网站 API",
     version=settings.API_VERSION,
-    docs_url="/api/docs",   # Swagger UI ·��
-    redoc_url="/api/redoc", # ReDoc ·��
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
     lifespan=lifespan,
 )
 
-# ===== �м��ע�� =====
-
-# CORS �м��������������Դ�Ŀ������󣨿����׶�ȫ��ͨ��
+# ===== CORS =====
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -68,35 +57,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ===== ȫ���쳣������ע�� =====
-# ע�⣺FastAPI ��ע��˳������ƥ�䣬��ע������ȼ�����
-# ���ͨ�� Exception ����ע�ᣨ������ȼ����������쳣��ע�ᣨ�������ȼ���
-
+# ===== Exception Handlers =====
 app.add_exception_handler(Exception, generic_exception_handler)
 app.add_exception_handler(StarletteHTTPException, starlette_http_exception_handler)
 app.add_exception_handler(AppException, app_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(IntegrityError, integrity_error_handler)
 
-# ===== ·��ע�� =====
-
-# ������飺GET /api/health
-app.include_router(health.router, prefix="/api", tags=["�������"])
-
-# ���͹����CRUD �˵���ص� /api/blogs
-app.include_router(blog.router, prefix="/api/blogs", tags=["����"])
-
-# ��Ŀ�����CRUD �˵���ص� /api/projects
-app.include_router(project.router, prefix="/api/projects", tags=["��Ŀ"])
-
-# RAG ֪ʶ�⣺׮����˵���ص� /api/rag������ʵ�֣�
+# ===== Routes =====
+app.include_router(health.router, prefix="/api", tags=["健康检查"])
+app.include_router(blog.router, prefix="/api/blogs", tags=["博客"])
+app.include_router(project.router, prefix="/api/projects", tags=["项目"])
 app.include_router(rag.router, prefix="/api/rag", tags=["RAG"])
 
-# 奖项管理：CRUD 端点挂载到 /api/awards
+# Admin CRUD (JWT protected)
+app.include_router(admin.router, prefix="/api/admin", tags=["管理后台"])
+
+# Contact form
+app.include_router(contact.router, prefix="/api/contact", tags=["联系方式"])
+
+# Awards
 app.include_router(award.router, prefix="/api/awards", tags=["奖项"])
 
 
-@app.get("/", tags=["��·��"])
+@app.get("/", tags=["根路径"])
 async def root():
-    """��·�������ػ�ӭ��Ϣ"""
-    return {"message": "��ӭ���� RAG ������վ API"}
+    return {"message": "欢迎访问 RAG 个人网站 API"}

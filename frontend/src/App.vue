@@ -1,5 +1,5 @@
-<template>
-  <div :class="{ 'light': isLightTheme }" class="min-h-screen bg-dark-100 dark:bg-dark-100 transition-colors duration-300">
+﻿<template>
+  <div :class="{ 'dark': !themeStore.isLightTheme }" class="min-h-screen bg-gray-50 dark:bg-dark-100 transition-colors duration-300">
     <NavBar />
     <main class="pt-16">
       <router-view v-slot="{ Component }">
@@ -36,3 +36,5 @@ onMounted(() => {
   opacity: 0;
 }
 </style>
+
+

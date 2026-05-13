@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory } from 'vue-router'
+﻿import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
 
 const routes: RouteRecordRaw[] = [
@@ -41,6 +41,11 @@ const routes: RouteRecordRaw[] = [
     path: '/rag/chat',
     name: 'RAGChat',
     component: () => import('@/views/RAGChatView.vue')
+  },
+  {
+    path: '/admin',
+    name: 'Admin',
+    component: () => import('@/views/AdminView.vue')
   }
 ]
 

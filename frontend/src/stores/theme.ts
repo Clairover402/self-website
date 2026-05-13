@@ -1,4 +1,4 @@
-import { defineStore } from 'pinia'
+﻿import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 export const useThemeStore = defineStore('theme', () => {
@@ -22,9 +22,9 @@ export const useThemeStore = defineStore('theme', () => {
 
   function applyTheme() {
     if (isLightTheme.value) {
-      document.documentElement.classList.add('light')
+      document.documentElement.classList.remove('dark')
     } else {
-      document.documentElement.classList.remove('light')
+      document.documentElement.classList.add('dark')
     }
   }
 

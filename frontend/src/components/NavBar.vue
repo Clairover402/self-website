@@ -1,12 +1,12 @@
-<template>
-  <nav class="fixed top-0 left-0 right-0 z-50 glass border-b border-white/10">
+﻿<template>
+  <nav class="fixed top-0 left-0 right-0 z-50 glass border-b border-gray-200 dark:border-white/10">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex items-center justify-between h-16">
         <router-link to="/" class="flex items-center space-x-2">
           <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500 to-accent-500 flex items-center justify-center">
             <span class="text-white font-bold text-sm">Dev</span>
           </div>
-          <span class="text-lg font-semibold text-white hidden sm:block">开发者网站</span>
+          <span class="text-lg font-semibold text-gray-900 dark:text-white hidden sm:block">开发者网站</span>
         </router-link>
 
         <div class="hidden md:flex items-center space-x-8">
@@ -14,8 +14,8 @@
             v-for="item in navItems"
             :key="item.path"
             :to="item.path"
-            class="text-gray-300 hover:text-white transition-colors duration-200 relative group"
-            :class="{ 'text-white': $route.path === item.path }"
+            class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors duration-200 relative group"
+            :class="{ 'text-gray-900 dark:text-white': $route.path === item.path }"
           >
             {{ item.name }}
             <span
@@ -28,7 +28,7 @@
         <div class="flex items-center space-x-4">
           <button
             @click="themeStore.toggleTheme"
-            class="p-2 rounded-lg hover:bg-white/10 transition-colors duration-200"
+            class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 transition-colors duration-200"
             aria-label="切换主题"
           >
             <svg v-if="themeStore.isLightTheme" class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -41,10 +41,10 @@
 
           <button
             @click="isMobileMenuOpen = !isMobileMenuOpen"
-            class="md:hidden p-2 rounded-lg hover:bg-white/10 transition-colors duration-200"
+            class="md:hidden p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 transition-colors duration-200"
             aria-label="菜单"
           >
-            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-6 h-6 text-gray-700 dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path v-if="!isMobileMenuOpen" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
               <path v-else stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -54,15 +54,15 @@
     </div>
 
     <transition name="slide-down">
-      <div v-if="isMobileMenuOpen" class="md:hidden glass border-t border-white/10">
+      <div v-if="isMobileMenuOpen" class="md:hidden glass border-t border-gray-200 dark:border-white/10">
         <div class="px-4 py-4 space-y-2">
           <router-link
             v-for="item in navItems"
             :key="item.path"
             :to="item.path"
             @click="isMobileMenuOpen = false"
-            class="block px-4 py-2 rounded-lg text-gray-300 hover:text-white hover:bg-white/10 transition-colors duration-200"
-            :class="{ 'text-white bg-white/10': $route.path === item.path }"
+            class="block px-4 py-2 rounded-lg text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-colors duration-200"
+            :class="{ 'text-gray-900 dark:text-white bg-gray-100 dark:bg-white/10': $route.path === item.path }"
           >
             {{ item.name }}
           </router-link>
