@@ -1,8 +1,8 @@
-/**
+﻿/**
  * API 客户端封装
  *
  * 基于 Axios 实例，统一配置 baseURL、超时和响应拦截。
- * 按业务模块拆分为 blogApi、projectApi、awardApi、ragApi 四个子对象。
+ * 按业务模块拆分为 blogApi、projectApi、awardApi、ragApi、adminRagApi 五个子对象。
  *
  * 所有列表请求支持分页参数（page/page_size）。
  */
@@ -69,45 +69,49 @@ export const awardApi = {
   getById: (id: string) => api.get(`/awards/${id}`),
 };
 
-/** RAG API */
+/** RAG 公开 API（仅聊天查询和只读列表） */
 export const ragApi = {
   /** RAG 查询（非流式） */
   query: (question: string, knowledge_base_id?: string) =>
     api.post("/rag/query", { question, knowledge_base_id }),
 
-  /** RAG 流式查询（返回 SSE URL，由调用方用 EventSource 消费） */
+  /** RAG 流式查询（返回 fetch 配置，由调用方用 ReadableStream 消费） */
   queryStreamUrl: (question: string, knowledge_base_id?: string) => {
-    const params = new URLSearchParams();
-    // SSE 端点用 POST，这里返回 fetch 配置
     return { url: "/api/rag/query/stream", body: { question, knowledge_base_id } };
   },
 
-  /** 知识库 CRUD */
+  /** 知识库列表（只读，供聊天选择知识库） */
   getKnowledgeBases: () => api.get("/rag/knowledge-bases"),
-  getKnowledgeBase: (id: string) => api.get(`/rag/knowledge-bases/${id}`),
-  createKnowledgeBase: (data: { name: string; description?: string; is_default?: boolean }) =>
-    api.post("/rag/knowledge-bases", data),
-  updateKnowledgeBase: (id: string, data: { name?: string; description?: string; is_default?: boolean }) =>
-    api.put(`/rag/knowledge-bases/${id}`, data),
-  deleteKnowledgeBase: (id: string) =>
-    api.delete(`/rag/knowledge-bases/${id}`),
-
-  /** 文档管理 */
-  getDocuments: (kb_id?: string) =>
-    api.get("/rag/documents", { params: kb_id ? { kb_id } : {} }),
-  uploadDocument: (kb_id: string, file: File) => {
-    const formData = new FormData();
-    formData.append("file", file);
-    return api.post(`/rag/documents?kb_id=${encodeURIComponent(kb_id)}`, formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
-  },
-  deleteDocument: (doc_id: string) =>
-    api.delete(`/rag/documents/${doc_id}`),
 
   /** 对话记录 */
   getConversations: (kb_id?: string) =>
     api.get("/rag/conversations", { params: kb_id ? { kb_id } : {} }),
+};
+
+/** RAG 管理后台 API（JWT 保护，需在请求头中带 Authorization: Bearer <token>） */
+export const adminRagApi = {
+  /** 知识库 CRUD */
+  getKnowledgeBases: () => api.get("/admin/rag/knowledge-bases"),
+  getKnowledgeBase: (id: string) => api.get(`/admin/rag/knowledge-bases/${id}`),
+  createKnowledgeBase: (data: { name: string; description?: string; is_default?: boolean }) =>
+    api.post("/admin/rag/knowledge-bases", data),
+  updateKnowledgeBase: (id: string, data: { name?: string; description?: string; is_default?: boolean }) =>
+    api.put(`/admin/rag/knowledge-bases/${id}`, data),
+  deleteKnowledgeBase: (id: string) =>
+    api.delete(`/admin/rag/knowledge-bases/${id}`),
+
+  /** 文档管理 */
+  getDocuments: (kb_id?: string) =>
+    api.get("/admin/rag/documents", { params: kb_id ? { kb_id } : {} }),
+  uploadDocument: (kb_id: string, file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return api.post(`/admin/rag/documents?kb_id=${encodeURIComponent(kb_id)}`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+  deleteDocument: (doc_id: string) =>
+    api.delete(`/admin/rag/documents/${doc_id}`),
 };
 
 export default api;
