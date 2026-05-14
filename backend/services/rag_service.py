@@ -1,4 +1,4 @@
-"""
+﻿"""
 =============================================================================
 RAG 业务服务层 (Service Layer)
 =============================================================================
@@ -117,19 +117,30 @@ class RAGService:
         """
         from langchain_core.messages import HumanMessage, SystemMessage
 
-        # 检索阶段（和非流式相同）
-        query_vector = self.query_pipeline.embedder.embed_query(question)
+        # 检索阶段：Query 改写 + 多查询检索合并
+        rewritten = self.query_pipeline.rewriter.rewrite(question)
         kb_id = knowledge_base_id or self._get_default_kb_id()
 
-        candidates = self.query_pipeline._hybrid_retrieval(
-            kb_id=kb_id,
-            query_text=question,
-            query_vector=query_vector,
-            top_k=10,
-        )
+        all_candidates: dict[str, dict] = {}
+        for search_query in rewritten.search_queries:
+            try:
+                qv = self.query_pipeline.embedder.embed_query(search_query)
+                candidates = self.query_pipeline._hybrid_retrieval(
+                    kb_id=kb_id,
+                    query_text=search_query,
+                    query_vector=qv,
+                    top_k=10,
+                )
+                for item in candidates:
+                    text = item.get("text", "")
+                    if text and (text not in all_candidates or item.get("score", 0) > all_candidates[text].get("score", 0)):
+                        all_candidates[text] = item
+            except Exception:
+                continue
 
-        candidate_texts = [c["text"] for c in candidates]
-        reranked = self.query_pipeline.reranker.rerank(question, candidate_texts, top_k=5)
+        merged = list(all_candidates.values())
+        candidate_texts = [c["text"] for c in merged]
+        reranked = self.query_pipeline.reranker.rerank(rewritten.original, candidate_texts, top_k=5)
         context_parts = [doc for _, doc, _ in reranked]
 
         # 构建 Prompt

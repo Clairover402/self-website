@@ -128,7 +128,17 @@
               <input v-model="blogForm.excerpt" placeholder="Excerpt" class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white outline-none" />
               <input v-model="blogForm.cover" placeholder="Cover URL" class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white outline-none" />
               <input v-model="blogForm.tagsStr" placeholder="Tags (comma separated)" class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white outline-none" />
-              <textarea v-model="blogForm.content" placeholder="Content (Markdown)" rows="12" class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white outline-none font-mono"></textarea>
+              <div class="flex items-center space-x-3">
+              <select v-model="blogForm.content_type" class="px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white outline-none">
+                <option value="markdown">Markdown</option>
+                <option value="html">HTML</option>
+              </select>
+              <label v-if="blogForm.content_type === 'html'" class="px-3 py-2 bg-gray-100 dark:bg-gray-600 text-sm rounded-lg cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-500 transition-colors">
+                <input type="file" accept=".html,.htm" class="hidden" @change="loadHtmlFile" />
+                Upload HTML
+              </label>
+            </div>
+            <textarea v-model="blogForm.content" :placeholder="blogForm.content_type === 'html' ? 'Content (HTML)' : 'Content (Markdown)'" rows="12" class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white outline-none font-mono"></textarea>
             </div>
             <div class="flex justify-end space-x-3 mt-6">
               <button @click="showBlogForm = false" class="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-white">Cancel</button>
@@ -195,7 +205,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import axios from 'axios'
+import { blogApi, projectApi, awardApi, adminApi, adminRagApi } from '@/api'
 
 const token = ref(localStorage.getItem('admin_token') || '')
 const password = ref('')
@@ -229,7 +239,6 @@ const newKbDefault = ref(false)
 const expandedKb = ref<string | null>(null)
 
 function formatDate(d: string) { return d ? new Date(d).toISOString().slice(0, 10) : '' }
-function getHeaders() { return { Authorization: 'Bearer ' + token.value } }
 function logout() { token.value = ''; localStorage.removeItem('admin_token') }
 
 function switchTab(key: string) {
@@ -241,9 +250,9 @@ async function doLogin() {
   loginLoading.value = true
   loginError.value = ''
   try {
-    const res: any = await axios.post('/api/admin/login', { password: password.value })
-    if (res.data?.success && res.data?.data?.token) {
-      token.value = res.data.data.token
+    const res: any = await adminApi.login(password.value)
+    if (res?.success && res?.data?.token) {
+      token.value = res.data.token
       localStorage.setItem('admin_token', token.value)
       loadAll()
     } else { loginError.value = 'Invalid password' }
@@ -254,15 +263,15 @@ async function doLogin() {
 async function loadAll() {
   try {
     const [b, p, a, c] = await Promise.all([
-      axios.get('/api/blogs?page_size=100'),
-      axios.get('/api/projects?page_size=100'),
-      axios.get('/api/awards?page_size=100'),
-      axios.get('/api/admin/contacts', { headers: getHeaders() }),
+      blogApi.getList({ page_size: 100 }),
+      projectApi.getList({ page_size: 100 }),
+      awardApi.getList({ page_size: 100 }),
+      adminApi.listContacts(),
     ])
-    blogList.value = (b.data as any)?.data?.items || []
-    projectList.value = (p.data as any)?.data?.items || []
-    awardList.value = (a.data as any)?.data?.items || []
-    contactList.value = (c.data as any)?.data || []
+    blogList.value = (b as any)?.data?.items || []
+    projectList.value = (p as any)?.data?.items || []
+    awardList.value = (a as any)?.data?.items || []
+    contactList.value = (c as any)?.data || []
   } catch {}
 }
 
@@ -271,13 +280,13 @@ async function loadAll() {
 async function loadRag() {
   ragLoading.value = true
   try {
-    const res: any = await axios.get('/api/admin/rag/knowledge-bases', { headers: getHeaders() })
-    kbList.value = res.data?.data || []
+    const res: any = await adminRagApi.getKnowledgeBases()
+    kbList.value = res?.data || []
     // Load documents for each KB
     for (const kb of kbList.value) {
       try {
-        const docRes: any = await axios.get(`/api/admin/rag/documents?kb_id=${encodeURIComponent(kb.id)}`, { headers: getHeaders() })
-        kb._documents = docRes.data?.data || []
+        const docRes: any = await adminRagApi.getDocuments(kb.id)
+        kb._documents = docRes?.data || []
       } catch { kb._documents = [] }
     }
   } catch (e) { console.error('Failed to load RAG data', e) }
@@ -287,11 +296,11 @@ async function loadRag() {
 async function createKb() {
   if (!newKbName.value.trim()) return
   try {
-    await axios.post('/api/admin/rag/knowledge-bases', {
+    await adminRagApi.createKnowledgeBase({
       name: newKbName.value.trim(),
       description: newKbDesc.value.trim() || undefined,
       is_default: newKbDefault.value,
-    }, { headers: getHeaders() })
+    })
     newKbName.value = ''
     newKbDesc.value = ''
     newKbDefault.value = false
@@ -302,7 +311,7 @@ async function createKb() {
 async function deleteKb(kbId: string) {
   if (!confirm('确定删除该知识库及其所有文档？')) return
   try {
-    await axios.delete(`/api/admin/rag/knowledge-bases/${encodeURIComponent(kbId)}`, { headers: getHeaders() })
+    await adminRagApi.deleteKnowledgeBase(kbId)
     await loadRag()
   } catch (e) { console.error('Failed to delete KB', e) }
 }
@@ -316,11 +325,7 @@ async function handleUpload(kbId: string, event: Event) {
   const file = input.files?.[0]
   if (!file) return
   try {
-    const formData = new FormData()
-    formData.append('file', file)
-    await axios.post(`/api/admin/rag/documents?kb_id=${encodeURIComponent(kbId)}`, formData, {
-      headers: { ...getHeaders(), 'Content-Type': 'multipart/form-data' },
-    })
+    await adminRagApi.uploadDocument(kbId, file)
     await loadRag()
   } catch (e) { console.error('Upload failed', e); alert('上传失败，请重试') }
   finally { input.value = '' }
@@ -329,7 +334,7 @@ async function handleUpload(kbId: string, event: Event) {
 async function deleteDoc(docId: string, _kbId: string) {
   if (!confirm('确定删除该文档？')) return
   try {
-    await axios.delete(`/api/admin/rag/documents/${encodeURIComponent(docId)}`, { headers: getHeaders() })
+    await adminRagApi.deleteDocument(docId)
     await loadRag()
   } catch (e) { console.error('Failed to delete doc', e) }
 }
@@ -352,9 +357,9 @@ async function saveBlog() {
   try {
     const payload = { ...blogForm.value, tags: blogForm.value.tagsStr.split(',').map((s: string) => s.trim()).filter(Boolean), read_time: 5 }
     if (editingBlog.value) {
-      await axios.put('/api/admin/blogs/' + editingBlog.value.slug, payload, { headers: getHeaders() })
+      await adminApi.updateBlog(editingBlog.value.slug, payload)
     } else {
-      await axios.post('/api/admin/blogs', payload, { headers: getHeaders() })
+      await adminApi.createBlog(payload)
     }
     showBlogForm.value = false
     loadAll()
@@ -364,7 +369,7 @@ async function saveBlog() {
 
 async function deleteBlog(slug: string) {
   if (!confirm('Delete?')) return
-  try { await axios.delete('/api/admin/blogs/' + slug, { headers: getHeaders() }); loadAll() } catch {}
+  try { await adminApi.deleteBlog(slug); loadAll() } catch {}
 }
 
 // Project
@@ -385,9 +390,9 @@ async function saveProject() {
   try {
     const payload = { ...projectForm.value, techs: projectForm.value.techsStr.split(',').map((s: string) => s.trim()).filter(Boolean) }
     if (editingProject.value) {
-      await axios.put('/api/admin/projects/' + editingProject.value.id, payload, { headers: getHeaders() })
+      await adminApi.updateProject(editingProject.value.id, payload)
     } else {
-      await axios.post('/api/admin/projects', payload, { headers: getHeaders() })
+      await adminApi.createProject(payload)
     }
     showProjectForm.value = false
     loadAll()
@@ -396,7 +401,7 @@ async function saveProject() {
 }
 async function deleteProject(id: number) {
   if (!confirm('Delete?')) return
-  try { await axios.delete('/api/admin/projects/' + id, { headers: getHeaders() }); loadAll() } catch {}
+  try { await adminApi.deleteProject(id); loadAll() } catch {}
 }
 
 // Award
@@ -417,9 +422,9 @@ async function saveAward() {
   try {
     const payload = { ...awardForm.value }
     if (editingAward.value) {
-      await axios.put(`/api/admin/awards/${editingAward.value.id}`, payload, { headers: getHeaders() })
+      await adminApi.updateAward(editingAward.value.id, payload)
     } else {
-      await axios.post('/api/admin/awards', payload, { headers: getHeaders() })
+      await adminApi.createAward(payload)
     }
     showAwardForm.value = false
     loadAll()
@@ -429,7 +434,7 @@ async function saveAward() {
 
 async function deleteAward(id: number) {
   if (!confirm('Delete?')) return
-  try { await axios.delete('/api/admin/awards/' + id, { headers: getHeaders() }); loadAll() } catch {}
+  try { await adminApi.deleteAward(id); loadAll() } catch {}
 }
 
 onMounted(() => { if (token.value) { loadAll(); if (activeTab.value === 'rag') loadRag() } })

@@ -47,11 +47,12 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { blogApi } from '@/api'
 import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 
 const route = useRoute()
 
 interface Blog {
-  id: number; title: string; slug: string; excerpt: string; content: string; cover: string | null; tags: string[]; read_time: number; created_at: string; updated_at: string;
+  id: number; title: string; slug: string; excerpt: string; content: string; content_type: string; cover: string | null; tags: string[]; read_time: number; created_at: string; updated_at: string;
 }
 
 const post = ref<Blog | null>(null)
@@ -60,6 +61,9 @@ const error = ref('')
 
 const renderedContent = computed(() => {
   if (!post.value) return ''
+  if (post.value.content_type === 'html') {
+    return DOMPurify.sanitize(post.value.content)
+  }
   return marked(post.value.content)
 })
 
