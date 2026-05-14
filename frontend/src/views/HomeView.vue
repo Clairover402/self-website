@@ -83,7 +83,7 @@
     </section>
 
     <!-- 技术栈 -->
-    <section class="py-20 px-4 sm:px-6 lg:px-8">
+    <section ref="techRef" class="py-20 px-4 sm:px-6 lg:px-8">
       <div class="max-w-6xl mx-auto">
         <h2 class="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white text-center mb-16">技术栈</h2>
         <div v-for="(group, key) in techStack" :key="key" class="mb-10">
@@ -102,7 +102,7 @@
     </section>
 
     <!-- 最新博客 -->
-    <section class="py-20 px-4 sm:px-6 lg:px-8 bg-gray-100/50 dark:bg-dark-50/50">
+    <section ref="blogRef" class="py-20 px-4 sm:px-6 lg:px-8 bg-gray-100/50 dark:bg-dark-50/50">
       <div class="max-w-6xl mx-auto">
         <h2 class="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white text-center mb-4">最新博客</h2>
         <p class="text-gray-500 dark:text-gray-400 text-center mb-12">分享技术见解与实践经验</p>
@@ -128,7 +128,7 @@
     </section>
 
     <!-- 精选项目 -->
-    <section class="py-20 px-4 sm:px-6 lg:px-8">
+    <section ref="projectsRef" class="py-20 px-4 sm:px-6 lg:px-8">
       <div class="max-w-6xl mx-auto">
         <h2 class="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white text-center mb-4">精选项目</h2>
         <p class="text-gray-500 dark:text-gray-400 text-center mb-12">创新与实践的结晶</p>
@@ -157,7 +157,7 @@
     </section>
 
     <!-- 技术能力 -->
-    <section class="py-20 px-4 sm:px-6 lg:px-8 bg-gray-100/50 dark:bg-dark-50/50">
+    <section ref="skillsRef" class="py-20 px-4 sm:px-6 lg:px-8 bg-gray-100/50 dark:bg-dark-50/50">
       <div class="max-w-4xl mx-auto">
         <h2 class="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white text-center mb-4">技术能力</h2>
         <p class="text-gray-500 dark:text-gray-400 text-center mb-12">全栈技能分布一览</p>
@@ -167,7 +167,7 @@
     </section>
 
     <!-- 联系我 -->
-    <section class="py-20 px-4 sm:px-6 lg:px-8">
+    <section ref="contactRef" class="py-20 px-4 sm:px-6 lg:px-8">
       <div class="max-w-2xl mx-auto">
         <h2 class="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white text-center mb-4">联系我</h2>
         <p class="text-gray-500 dark:text-gray-400 text-center mb-12">有任何问题或合作意向，欢迎留言</p>
@@ -194,7 +194,7 @@
     </section>
 
     <!-- CTA -->
-    <section class="py-20 px-4 sm:px-6 lg:px-8 bg-gradient-to-r from-primary-500/10 to-accent-500/10">
+    <section ref="ctaRef" class="py-20 px-4 sm:px-6 lg:px-8 bg-gradient-to-r from-primary-500/10 to-accent-500/10">
       <div class="max-w-4xl mx-auto text-center">
         <h2 class="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white mb-6">准备好开始你的项目了吗？</h2>
         <p class="text-gray-500 dark:text-gray-400 mb-8">无论是合作项目、技术咨询还是只是想聊聊，都可以联系我。</p>
@@ -211,9 +211,18 @@
 import { ref, computed, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { blogApi, projectApi } from '@/api'
 import { useSEO } from '@/composables/useSEO'
+import { useScrollReveal } from '@/composables/useScrollReveal'
 import axios from 'axios'
 
 const SkillRadar = defineAsyncComponent(() => import('@/components/SkillRadar.vue'))
+
+// ===== Scroll Reveal Refs =====
+const techRef = ref<HTMLElement | null>(null)
+const blogRef = ref<HTMLElement | null>(null)
+const projectsRef = ref<HTMLElement | null>(null)
+const skillsRef = ref<HTMLElement | null>(null)
+const contactRef = ref<HTMLElement | null>(null)
+const ctaRef = ref<HTMLElement | null>(null)
 
 // ===== 个人信息 =====
 const NAME_ZH = '张昊'
@@ -348,6 +357,15 @@ async function submitContact() {
   } finally { contactSending.value = false }
 }
 
+useScrollReveal([
+  { ref: techRef, childSelector: '.glass.rounded-xl', stagger: 0.1 },
+  { ref: blogRef, childSelector: 'article', stagger: 0.15 },
+  { ref: projectsRef, childSelector: '.glass.rounded-2xl', stagger: 0.15 },
+  { ref: skillsRef, onEnter: () => { if (!showRadar.value) showRadar.value = true } },
+  { ref: contactRef, childSelector: 'input, textarea, button', stagger: 0.1 },
+  { ref: ctaRef },
+])
+
 onMounted(() => {
   fetchHomeData()
   useSEO({ title: NAME_ZH + ' ' + NICKNAME + ' - Agent Application Full-Stack Developer', description: 'Portfolio, Tech Blog & AI Knowledge Base', keywords: 'fullstack,developer,Vue,Python,AI,blog' })
@@ -356,8 +374,8 @@ onMounted(() => {
   targetX.value = spotlightX.value
   targetY.value = spotlightY.value
   animate()
-  setTimeout(() => { showRadar.value = true }, 300)
 })
 
 onUnmounted(() => { cancelAnimationFrame(rafId) })
 </script>
+  { ref: skillsRef, onEnter: () => { if (!showRadar.value) showRadar.value = true } },

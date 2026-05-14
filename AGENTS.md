@@ -12,7 +12,7 @@
 
 ## 启动命令
 
-### 前端（端口 3000）
+### 前端（端口 5173）
 ```bash
 cd frontend && npm run dev
 npm run build    # 生产构建
@@ -187,6 +187,7 @@ RAG 端点（`/api/rag/*`）仅为桩代码，二期实现。
 
 ## 关键约束
 
+- **前端端口 3000 已占用**：端口 3000 由用户代理使用，**严禁**将 Vite dev server 或任何服务绑定到 3000 端口。Vite 默认 5173。
 - **数据库**：SQLAlchemy ORM + MySQL（开发），配置 `DATABASE_URL` 可切换（.env 中默认 `mysql+pymysql://root:123456@localhost:3306/self_website`）
 - **分层架构**：`Router → Service → CRUD → ORM Model → Database`
 - **CRUD 风格**：SQLAlchemy 2.0 `select()` 语句，非旧版 `session.query()`
