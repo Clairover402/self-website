@@ -17,6 +17,7 @@ from sqlalchemy import select, func, cast, String
 from sqlalchemy.orm import Session
 from models.blog import BlogModel
 from schemas.blog import BlogCreate, BlogUpdate
+from utils.exceptions import ConflictException
 
 
 def get_all(
@@ -99,6 +100,10 @@ def get_by_slug(db: Session, slug: str) -> Optional[BlogModel]:
 
 
 def create(db: Session, blog_create: BlogCreate) -> BlogModel:
+    existing = get_by_slug(db, blog_create.slug)
+    if existing:
+        raise ConflictException(message="slug already exists", err_code="SLUG_DUPLICATE")
+
     """
     创建新博客文章
 
@@ -122,6 +127,12 @@ def create(db: Session, blog_create: BlogCreate) -> BlogModel:
 
 
 def update(db: Session, slug: str, blog_update: BlogUpdate) -> Optional[BlogModel]:
+    # Check for slug conflict if slug is being changed
+    if blog_update.slug and blog_update.slug != slug:
+        conflict = get_by_slug(db, blog_update.slug)
+        if conflict:
+            raise ConflictException(message="slug already exists", err_code="SLUG_DUPLICATE")
+
     """
     更新现有博客文章
 

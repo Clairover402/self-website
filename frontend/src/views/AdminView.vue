@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="min-h-screen py-12 px-4">
     <div class="max-w-5xl mx-auto">
       <div v-if="!token" class="max-w-sm mx-auto mt-20">
@@ -161,6 +161,36 @@
       </div>
     </div>
   </div>
+
+        <!-- Project Form Modal -->
+        <div v-if="showProjectForm" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" @click.self="showProjectForm = false">
+          <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">{{ editingProject ? 'Edit' : 'New' }} Project</h2>
+            <div class="space-y-3">
+              <div class="grid grid-cols-2 gap-3">
+                <input v-model="projectForm.name" placeholder="Name *" class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white outline-none" />
+                <select v-model="projectForm.status" class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white outline-none">
+                  <option value="">Status</option>
+                  <option value="planning">Planning</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="completed">Completed</option>
+                  <option value="maintenance">Maintenance</option>
+                </select>
+              </div>
+              <input v-model="projectForm.description" placeholder="Short description" class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white outline-none" />
+              <input v-model="projectForm.icon" placeholder="Icon (emoji)" class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white outline-none" />
+              <input v-model="projectForm.year" placeholder="Year" class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white outline-none" />
+              <input v-model="projectForm.techsStr" placeholder="Techs (comma separated)" class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white outline-none" />
+              <input v-model="projectForm.demo_url" placeholder="Demo URL" class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white outline-none" />
+              <input v-model="projectForm.repo_url" placeholder="Repo URL" class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white outline-none" />
+              <textarea v-model="projectForm.full_description" placeholder="Full description (Markdown)" rows="6" class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white outline-none font-mono"></textarea>
+            </div>
+            <div class="flex justify-end space-x-3 mt-6">
+              <button @click="showProjectForm = false" class="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-white">Cancel</button>
+              <button @click="saveProject" :disabled="saving" class="px-4 py-2 text-sm bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50">{{ saving ? 'Saving...' : 'Save' }}</button>
+            </div>
+          </div>
+        </div>
 </template>
 
 <script setup lang="ts">
@@ -338,7 +368,32 @@ async function deleteBlog(slug: string) {
 }
 
 // Project
-function openProjectForm(_item?: any) { /* TODO */ }
+const showProjectForm = ref(false)
+const editingProject = ref<any>(null)
+const projectForm = ref({ name: '', description: '', icon: '', status: '', year: '', techsStr: '', full_description: '', demo_url: '', repo_url: '' })
+
+function openProjectForm(item?: any) {
+  editingProject.value = item || null
+  projectForm.value = item
+    ? { name: item.name || '', description: item.description || '', icon: item.icon || '', status: item.status || '', year: item.year || '', techsStr: (item.techs || []).join(','), full_description: item.full_description || '', demo_url: item.demo_url || '', repo_url: item.repo_url || '' }
+    : { name: '', description: '', icon: '', status: '', year: '', techsStr: '', full_description: '', demo_url: '', repo_url: '' }
+  showProjectForm.value = true
+}
+
+async function saveProject() {
+  saving.value = true
+  try {
+    const payload = { ...projectForm.value, techs: projectForm.value.techsStr.split(',').map((s: string) => s.trim()).filter(Boolean) }
+    if (editingProject.value) {
+      await axios.put('/api/admin/projects/' + editingProject.value.id, payload, { headers: getHeaders() })
+    } else {
+      await axios.post('/api/admin/projects', payload, { headers: getHeaders() })
+    }
+    showProjectForm.value = false
+    loadAll()
+  } catch {}
+  finally { saving.value = false }
+}
 async function deleteProject(id: number) {
   if (!confirm('Delete?')) return
   try { await axios.delete('/api/admin/projects/' + id, { headers: getHeaders() }); loadAll() } catch {}

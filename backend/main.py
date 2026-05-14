@@ -1,4 +1,4 @@
-"""
+﻿"""
 RAG 个人网站 API 入口
 
 该模块为 FastAPI 应用的入口点，负责应用配置、中间件和路由注册。
@@ -19,6 +19,7 @@ from sqlalchemy.exc import IntegrityError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from core.config import settings
+from core.auth import check_admin_security
 from core.logging_config import setup_logging
 from core.exception_handlers import (
     app_exception_handler,
@@ -35,6 +36,7 @@ from utils.exceptions import AppException
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging(debug=settings.DEBUG)
+    check_admin_security()
     init_db()
     yield
 

@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="min-h-screen">
     <!-- ===== Hero 鼠标光圈区域 ===== -->
     <section
@@ -133,7 +133,7 @@
         <h2 class="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white text-center mb-4">精选项目</h2>
         <p class="text-gray-500 dark:text-gray-400 text-center mb-12">创新与实践的结晶</p>
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <div v-for="project in featuredProjects" :key="project.id" class="glass rounded-2xl overflow-hidden hover-lift group cursor-pointer" @click="$router.push(`/project/${project.id}`)">
+          <div v-for="project in featuredProjects" :key="project.id" class="glass rounded-2xl overflow-hidden hover-lift group cursor-pointer" @click="$router.push(`/projects/${project.id}`)">
             <div class="h-40 bg-gradient-to-br from-primary-500/10 to-accent-500/10 flex items-end justify-center pb-4">
               <span class="px-4 py-2 bg-primary-500 text-white text-sm rounded-full">查看详情</span>
             </div>

@@ -115,3 +115,26 @@ export const adminRagApi = {
 };
 
 export default api;
+
+/** 管理后台 API（JWT 保护，需在请求头中带 Authorization: Bearer <token>） */
+export const adminApi = {
+  login: (password: string) => api.post('/admin/login', { password }),
+
+  /** Blog CRUD */
+  createBlog: (data: any, headers: Record<string, string>) => api.post('/admin/blogs', data, { headers }),
+  updateBlog: (slug: string, data: any, headers: Record<string, string>) => api.put(`/admin/blogs/${slug}`, data, { headers }),
+  deleteBlog: (slug: string, headers: Record<string, string>) => api.delete(`/admin/blogs/${slug}`, { headers }),
+
+  /** Project CRUD */
+  createProject: (data: any, headers: Record<string, string>) => api.post('/admin/projects', data, { headers }),
+  updateProject: (id: number, data: any, headers: Record<string, string>) => api.put(`/admin/projects/${id}`, data, { headers }),
+  deleteProject: (id: number, headers: Record<string, string>) => api.delete(`/admin/projects/${id}`, { headers }),
+
+  /** Award CRUD */
+  createAward: (data: any, headers: Record<string, string>) => api.post('/admin/awards', data, { headers }),
+  updateAward: (id: number, data: any, headers: Record<string, string>) => api.put(`/admin/awards/${id}`, data, { headers }),
+  deleteAward: (id: number, headers: Record<string, string>) => api.delete(`/admin/awards/${id}`, { headers }),
+
+  /** Contacts */
+  listContacts: (headers: Record<string, string>) => api.get('/admin/contacts', { headers }),
+};

@@ -36,3 +36,13 @@ def login_admin(password: str) -> str | None:
     if password == ADMIN_TOKEN:
         return create_admin_token()
     return None
+
+
+def check_admin_security():
+    """Startup check: warn if default credentials are in use."""
+    import logging
+    logger = logging.getLogger("auth")
+    if SECRET_KEY == "self-website-admin-secret-key-change-me":
+        logger.warning("ADMIN_SECRET is using the default value! Set ADMIN_SECRET in .env for production.")
+    if ADMIN_TOKEN == "admin123":
+        logger.warning("ADMIN_TOKEN is using the default value! Set ADMIN_TOKEN in .env for production.")
