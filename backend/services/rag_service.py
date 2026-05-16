@@ -82,9 +82,10 @@ class RAGService:
         非流式 RAG 查询 —— 等待完整答案后返回。
         适合：API 调用、批量评估、不需要实时反馈的场景
         """
+        kb_id = knowledge_base_id or self._get_default_kb_id()
         result = self.query_pipeline.query(
             question=question,
-            kb_id=knowledge_base_id,
+            kb_id=kb_id,
         )
         return RAGQueryResponse(
             answer=result.answer,
@@ -515,31 +516,25 @@ class RAGService:
     # =====================================================================
 
     def _get_default_kb_id(self) -> str:
-        """
-        获取默认知识库的 kb_id。
-
-        查找优先级：
-        1. 标记为 is_default=True 的知识库
-        2. 如果不存在，返回最早创建的知识库
-        3. 如果没有任何知识库，返回 "default" 字符串（占位）
-
-        用于用户提问时没有指定知识库的兜底逻辑。
-        """
+        """获取默认知识库的 kb_id，优先选有 Qdrant 数据的 KB。"""
         with SessionLocal() as db:
+            # 1. 优先：标记为默认的知识库
             row = db.execute(
-                select(KnowledgeBaseModel).where(KnowledgeBaseModel.is_default == True)
+                select(KnowledgeBaseModel).where(KnowledgeBaseModel.is_default == True).limit(1)
             ).scalar_one_or_none()
-            if row:
+            if row and self.store.collection_exists(row.kb_id):
                 return row.kb_id
-
-            # fallback：返回第一个
-            row = db.execute(
+            # 2. 回退：找有 Qdrant 数据的最早 KB
+            rows = db.execute(
                 select(KnowledgeBaseModel).order_by(KnowledgeBaseModel.created_at.asc())
-            ).scalar_one_or_none()
-            if row:
-                return row.kb_id
+            ).scalars().all()
+            for r in rows:
+                if self.store.collection_exists(r.kb_id):
+                    return r.kb_id
+            # 3. 兜底：返回第一个（即使无数据）
+            if rows:
+                return rows[0].kb_id
             return "default"
-
     # =====================================================================
     # ORM → Schema 映射（类似 Java 中的 BeanUtils.copyProperties）
     # =====================================================================

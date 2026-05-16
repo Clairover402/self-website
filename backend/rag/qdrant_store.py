@@ -159,6 +159,10 @@ class QdrantStore:
         if self.client.collection_exists(name):
             self.client.delete_collection(name)
 
+    def collection_exists(self, kb_id: str) -> bool:
+        """检查 Qdrant 中该 KB 的 Collection 是否存在。"""
+        return self.client.collection_exists(self.collection_name(kb_id))
+
     def collection_count(self, kb_id: str) -> int:
         """
         获取 Collection 中的向量数量（SELECT COUNT(*)）。
@@ -262,10 +266,11 @@ class QdrantStore:
         """
         top_k = top_k or settings.RETRIEVAL_TOP_K
 
-        results = self.client.search(
+        results = self.client.query_points(
             collection_name=self.collection_name(kb_id),
-            query_vector=query_vector,
+            query=query_vector,
             limit=top_k,
+            with_payload=True,
         )
 
         # 格式化返回结果
@@ -277,7 +282,7 @@ class QdrantStore:
                 "chunk_index": hit.payload.get("chunk_index", 0),
                 "score": hit.score,                         # 相似度分数
             }
-            for hit in results
+            for hit in results.points
         ]
 
     def delete_by_doc_id(self, kb_id: str, doc_id: str) -> None:

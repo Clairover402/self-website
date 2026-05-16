@@ -76,6 +76,7 @@
             <div class="flex flex-wrap gap-3">
               <input v-model="newKbName" type="text" placeholder="知识库名称" class="flex-1 min-w-[180px] px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500" />
               <input v-model="newKbDesc" type="text" placeholder="描述（可选）" class="flex-1 min-w-[180px] px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500" />
+              <textarea v-model="newKbContent" placeholder="知识库内容（可选，将自动生成为文档）" rows="3" class="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500 font-mono"></textarea>
               <label class="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-400 cursor-pointer">
                 <input v-model="newKbDefault" type="checkbox" class="rounded" /> 默认
               </label>
@@ -154,7 +155,7 @@
             <div class="space-y-3">
               <input v-model="awardForm.title" placeholder="Title" class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white outline-none" />
               <input v-model="awardForm.organization" placeholder="Organization" class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white outline-none" />
-              <input v-model="awardForm.date" type="date" class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white outline-none" />
+              <input v-model="awardForm.award_date" type="date" placeholder="获奖日期" class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white outline-none" />
               <select v-model="awardForm.level" class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white outline-none">
                 <option value="">选择级别</option>
                 <option value="国家级">国家级</option><option value="省级">省级</option><option value="市级">市级</option><option value="校级">校级</option>
@@ -168,10 +169,6 @@
             </div>
           </div>
         </div>
-      </div>
-    </div>
-  </div>
-
         <!-- Project Form Modal -->
         <div v-if="showProjectForm" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" @click.self="showProjectForm = false">
           <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
@@ -201,6 +198,9 @@
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -236,6 +236,7 @@ const kbList = ref<any[]>([])
 const newKbName = ref('')
 const newKbDesc = ref('')
 const newKbDefault = ref(false)
+const newKbContent = ref('')
 const expandedKb = ref<string | null>(null)
 
 function formatDate(d: string) { return d ? new Date(d).toISOString().slice(0, 10) : '' }
@@ -272,7 +273,7 @@ async function loadAll() {
     projectList.value = (p as any)?.data?.items || []
     awardList.value = (a as any)?.data?.items || []
     contactList.value = (c as any)?.data || []
-  } catch {}
+  } catch (e) { console.error('Failed to load admin data', e) }
 }
 
 // ===== RAG =====
@@ -296,16 +297,24 @@ async function loadRag() {
 async function createKb() {
   if (!newKbName.value.trim()) return
   try {
-    await adminRagApi.createKnowledgeBase({
+    const res: any = await adminRagApi.createKnowledgeBase({
       name: newKbName.value.trim(),
       description: newKbDesc.value.trim() || undefined,
       is_default: newKbDefault.value,
     })
+    const kbId = res?.data?.id
+    // If content was provided, upload it as a text document
+    if (kbId && newKbContent.value.trim()) {
+      const blob = new Blob([newKbContent.value], { type: 'text/plain' })
+      const file = new File([blob], newKbName.value.trim() + '.txt', { type: 'text/plain' })
+      await adminRagApi.uploadDocument(kbId, file)
+    }
     newKbName.value = ''
     newKbDesc.value = ''
     newKbDefault.value = false
+    newKbContent.value = ''
     await loadRag()
-  } catch (e) { console.error('Failed to create KB', e) }
+  } catch (e) { console.error('Failed to create KB', e); alert('创建知识库失败，请检查控制台') }
 }
 
 async function deleteKb(kbId: string) {
@@ -342,13 +351,13 @@ async function deleteDoc(docId: string, _kbId: string) {
 // Blog
 const showBlogForm = ref(false)
 const editingBlog = ref<any>(null)
-const blogForm = ref({ title: '', slug: '', excerpt: '', content: '', cover: '', tagsStr: '' })
+const blogForm = ref({ title: '', slug: '', excerpt: '', content: '', cover: '', tagsStr: '', content_type: 'markdown' })
 
 function openBlogForm(item?: any) {
   editingBlog.value = item || null
   blogForm.value = item
-    ? { title: item.title, slug: item.slug, excerpt: item.excerpt, content: item.content, cover: item.cover || '', tagsStr: (item.tags || []).join(',') }
-    : { title: '', slug: '', excerpt: '', content: '', cover: '', tagsStr: '' }
+    ? { title: item.title, slug: item.slug, excerpt: item.excerpt, content: item.content, cover: item.cover || '', tagsStr: (item.tags || []).join(','), content_type: item.content_type || 'markdown' }
+    : { title: '', slug: '', excerpt: '', content: '', cover: '', tagsStr: '', content_type: 'markdown' }
   showBlogForm.value = true
 }
 
@@ -363,13 +372,22 @@ async function saveBlog() {
     }
     showBlogForm.value = false
     loadAll()
-  } catch {}
+  } catch (e) { console.error('Failed to save blog', e); alert('保存失败，请重试') }
   finally { saving.value = false }
 }
 
 async function deleteBlog(slug: string) {
   if (!confirm('Delete?')) return
-  try { await adminApi.deleteBlog(slug); loadAll() } catch {}
+  try { await adminApi.deleteBlog(slug); loadAll() } catch (e) { console.error('Failed to delete blog', e); alert('删除失败，请重试') }
+}
+
+function loadHtmlFile(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = () => { blogForm.value.content = reader.result as string }
+  reader.readAsText(file)
 }
 
 // Project
@@ -396,24 +414,24 @@ async function saveProject() {
     }
     showProjectForm.value = false
     loadAll()
-  } catch {}
+  } catch (e) { console.error('Failed to save project', e); alert('保存失败，请重试') }
   finally { saving.value = false }
 }
 async function deleteProject(id: number) {
   if (!confirm('Delete?')) return
-  try { await adminApi.deleteProject(id); loadAll() } catch {}
+  try { await adminApi.deleteProject(id); loadAll() } catch (e) { console.error('Failed to delete project', e); alert('删除失败，请重试') }
 }
 
 // Award
 const showAwardForm = ref(false)
 const editingAward = ref<any>(null)
-const awardForm = ref({ title: '', organization: '', date: '', level: '' })
+const awardForm = ref({ title: '', organization: '', award_date: '', level: '' })
 
 function openAwardForm(item?: any) {
   editingAward.value = item || null
   awardForm.value = item
-    ? { title: item.title, organization: item.organization, date: item.date?.slice(0, 10) || '', level: item.level }
-    : { title: '', organization: '', date: '', level: '' }
+    ? { title: item.title, organization: item.organization, award_date: item.award_date?.toString().slice(0, 10) || '', level: item.level }
+    : { title: '', organization: '', award_date: '', level: '' }
   showAwardForm.value = true
 }
 
@@ -428,13 +446,13 @@ async function saveAward() {
     }
     showAwardForm.value = false
     loadAll()
-  } catch {}
+  } catch (e) { console.error('Failed to save award', e); alert('保存失败，请重试') }
   finally { saving.value = false }
 }
 
 async function deleteAward(id: number) {
   if (!confirm('Delete?')) return
-  try { await adminApi.deleteAward(id); loadAll() } catch {}
+  try { await adminApi.deleteAward(id); loadAll() } catch (e) { console.error('Failed to delete award', e); alert('删除失败，请重试') }
 }
 
 onMounted(() => { if (token.value) { loadAll(); if (activeTab.value === 'rag') loadRag() } })

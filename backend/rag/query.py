@@ -1,4 +1,4 @@
-﻿"""
+"""
 =============================================================================
 RAG 核心模块 — Query 管线 (Query Pipeline)
 =============================================================================
@@ -58,6 +58,7 @@ from .embedding import EmbeddingService
 from .reranker import RerankerService
 from .qdrant_store import QdrantStore
 from core.config import settings
+from .rewriter import QueryRewriter
 
 
 @dataclass
@@ -89,6 +90,7 @@ class QueryPipeline:
         self.embedder = EmbeddingService()
         self.reranker = RerankerService()
         self.store = QdrantStore()
+        self.rewriter = QueryRewriter()
         self._llm: ChatOpenAI | None = None
         # BM25 缓存：key=知识库ID, value=(原文列表, BM25索引对象)
         self._bm25_cache: dict[str, tuple[list[str], object]] = {}

@@ -25,6 +25,17 @@ api.interceptors.response.use(
   }
 );
 
+// 请求拦截器：自动为 /admin/ 路径注入 JWT token
+api.interceptors.request.use((config) => {
+  if (config.url?.includes("/admin/")) {
+    const token = localStorage.getItem("admin_token")
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+    }
+  }
+  return config
+})
+
 /** 分页请求参数（后端查询参数名一致） */
 export interface PaginationParams {
   page?: number;
@@ -116,25 +127,25 @@ export const adminRagApi = {
 
 export default api;
 
-/** 管理后台 API（JWT 保护，需在请求头中带 Authorization: Bearer <token>） */
+/** 管理后台 API（JWT token 由请求拦截器自动注入） */
 export const adminApi = {
   login: (password: string) => api.post('/admin/login', { password }),
 
   /** Blog CRUD */
-  createBlog: (data: any, headers: Record<string, string>) => api.post('/admin/blogs', data, { headers }),
-  updateBlog: (slug: string, data: any, headers: Record<string, string>) => api.put(`/admin/blogs/${slug}`, data, { headers }),
-  deleteBlog: (slug: string, headers: Record<string, string>) => api.delete(`/admin/blogs/${slug}`, { headers }),
+  createBlog: (data: any) => api.post('/admin/blogs', data),
+  updateBlog: (slug: string, data: any) => api.put(`/admin/blogs/${slug}`, data),
+  deleteBlog: (slug: string) => api.delete(`/admin/blogs/${slug}`),
 
   /** Project CRUD */
-  createProject: (data: any, headers: Record<string, string>) => api.post('/admin/projects', data, { headers }),
-  updateProject: (id: number, data: any, headers: Record<string, string>) => api.put(`/admin/projects/${id}`, data, { headers }),
-  deleteProject: (id: number, headers: Record<string, string>) => api.delete(`/admin/projects/${id}`, { headers }),
+  createProject: (data: any) => api.post('/admin/projects', data),
+  updateProject: (id: number, data: any) => api.put(`/admin/projects/${id}`, data),
+  deleteProject: (id: number) => api.delete(`/admin/projects/${id}`),
 
   /** Award CRUD */
-  createAward: (data: any, headers: Record<string, string>) => api.post('/admin/awards', data, { headers }),
-  updateAward: (id: number, data: any, headers: Record<string, string>) => api.put(`/admin/awards/${id}`, data, { headers }),
-  deleteAward: (id: number, headers: Record<string, string>) => api.delete(`/admin/awards/${id}`, { headers }),
+  createAward: (data: any) => api.post('/admin/awards', data),
+  updateAward: (id: number, data: any) => api.put(`/admin/awards/${id}`, data),
+  deleteAward: (id: number) => api.delete(`/admin/awards/${id}`),
 
   /** Contacts */
-  listContacts: (headers: Record<string, string>) => api.get('/admin/contacts', { headers }),
+  listContacts: () => api.get('/admin/contacts'),
 };
