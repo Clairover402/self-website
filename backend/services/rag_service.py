@@ -1,4 +1,4 @@
-﻿"""
+"""
 =============================================================================
 RAG 业务服务层 (Service Layer)
 =============================================================================
@@ -52,6 +52,7 @@ from schemas.rag import (
 from rag.ingest import IngestPipeline
 from rag.query import QueryPipeline
 from rag.qdrant_store import QdrantStore
+from rag.evaluation import evaluate_single_query
 
 
 class RAGService:
@@ -77,12 +78,20 @@ class RAGService:
     # 查询（Query）
     # =====================================================================
 
-    def query(self, question: str, knowledge_base_id: Optional[str] = None) -> RAGQueryResponse:
+    def query(self, question: str, knowledge_base_id: Optional[str] = None, public_only: bool = False) -> RAGQueryResponse:
         """
         非流式 RAG 查询 —— 等待完整答案后返回。
         适合：API 调用、批量评估、不需要实时反馈的场景
         """
-        kb_id = knowledge_base_id or self._get_default_kb_id()
+        kb_id = knowledge_base_id or self._get_default_kb_id(public_only=public_only)
+        
+        # 如果指定了 kb_id 且 public_only，需验证可见性
+        if public_only and knowledge_base_id:
+            kb_info = self.get_knowledge_base_by_id(knowledge_base_id)
+            if kb_info and kb_info.visibility != "public":
+                from utils.exceptions import NotFoundException
+                raise NotFoundException(message="知识库不存在或无权访问", err_code="KB_NOT_FOUND")
+        
         result = self.query_pipeline.query(
             question=question,
             kb_id=kb_id,
@@ -93,7 +102,7 @@ class RAGService:
             confidence=result.confidence,
         )
 
-    def query_stream(self, question: str, knowledge_base_id: Optional[str] = None):
+    def query_stream(self, question: str, knowledge_base_id: Optional[str] = None, public_only: bool = False):
         """
         流式查询 —— 边生成边输出（逐 token 返回）。
 
@@ -120,7 +129,7 @@ class RAGService:
 
         # 检索阶段：Query 改写 + 多查询检索合并
         rewritten = self.query_pipeline.rewriter.rewrite(question)
-        kb_id = knowledge_base_id or self._get_default_kb_id()
+        kb_id = knowledge_base_id or self._get_default_kb_id(public_only=public_only)
 
         all_candidates: dict[str, dict] = {}
         for search_query in rewritten.search_queries:
@@ -166,7 +175,7 @@ class RAGService:
     # 知识库 CRUD
     # =====================================================================
 
-    def get_knowledge_bases(self) -> List[KnowledgeBase]:
+    def get_knowledge_bases(self, public_only: bool = False) -> List[KnowledgeBase]:
         """
         获取所有知识库列表。
 
@@ -180,8 +189,11 @@ class RAGService:
         """
         with SessionLocal() as db:
             # SQLAlchemy 2.0 风格：select() 而非 session.query()
+            stmt = select(KnowledgeBaseModel)
+            if public_only:
+                stmt = stmt.where(KnowledgeBaseModel.visibility == "public")
             rows = db.execute(
-                select(KnowledgeBaseModel).order_by(KnowledgeBaseModel.created_at.desc())
+                stmt.order_by(KnowledgeBaseModel.created_at.desc())
             ).scalars().all()
             # ORM 对象 → Pydantic Schema（适配 API 响应格式）
             return [self._kb_to_schema(row) for row in rows]
@@ -470,6 +482,33 @@ class RAGService:
             rows = db.execute(stmt).scalars().all()
             return [self._conv_to_schema(row) for row in rows]
 
+    def evaluate_query(
+        self,
+        question: str,
+        kb_id: Optional[str] = None,
+        ground_truth: Optional[str] = None,
+    ) -> dict:
+        """
+        评估单次 RAG 查询。
+        
+        执行查询 → 获取 answer + contexts → 调用 RAGAS 评估。
+        """
+        # 1. 执行查询
+        response = self.query(question, kb_id)
+        
+        # 2. 获取检索到的 contexts（来源文档 ID 列表→需要转为文本）
+        # sources 是 doc_id 列表，contexts 需要是文本片段
+        contexts = response.sources if response.sources else []
+        
+        # 3. 调用评估
+        eval_result = evaluate_single_query(
+            question=question,
+            answer=response.answer,
+            contexts=contexts,
+            ground_truth=ground_truth or "",
+        )
+        return eval_result
+
     def save_conversation(
         self,
         kb_id: Optional[str],
@@ -515,19 +554,21 @@ class RAGService:
     # 辅助方法
     # =====================================================================
 
-    def _get_default_kb_id(self) -> str:
+    def _get_default_kb_id(self, public_only: bool = False) -> str:
         """获取默认知识库的 kb_id，优先选有 Qdrant 数据的 KB。"""
         with SessionLocal() as db:
             # 1. 优先：标记为默认的知识库
-            row = db.execute(
-                select(KnowledgeBaseModel).where(KnowledgeBaseModel.is_default == True).limit(1)
-            ).scalar_one_or_none()
+            stmt = select(KnowledgeBaseModel).where(KnowledgeBaseModel.is_default == True)
+            if public_only:
+                stmt = stmt.where(KnowledgeBaseModel.visibility == "public")
+            row = db.execute(stmt.limit(1)).scalar_one_or_none()
             if row and self.store.collection_exists(row.kb_id):
                 return row.kb_id
             # 2. 回退：找有 Qdrant 数据的最早 KB
-            rows = db.execute(
-                select(KnowledgeBaseModel).order_by(KnowledgeBaseModel.created_at.asc())
-            ).scalars().all()
+            stmt2 = select(KnowledgeBaseModel).order_by(KnowledgeBaseModel.created_at.asc())
+            if public_only:
+                stmt2 = stmt2.where(KnowledgeBaseModel.visibility == "public")
+            rows = db.execute(stmt2).scalars().all()
             for r in rows:
                 if self.store.collection_exists(r.kb_id):
                     return r.kb_id
@@ -554,6 +595,7 @@ class RAGService:
             name=row.name,
             description=row.description,
             is_default=row.is_default,
+            visibility=row.visibility or "private",
             created_at=row.created_at,
             updated_at=row.updated_at,
         )

@@ -59,6 +59,7 @@ from .reranker import RerankerService
 from .qdrant_store import QdrantStore
 from core.config import settings
 from .rewriter import QueryRewriter
+from .monitor import timed, reset_timing_ctx
 
 
 @dataclass
@@ -92,6 +93,7 @@ class QueryPipeline:
         self.store = QdrantStore()
         self.rewriter = QueryRewriter()
         self._llm: ChatOpenAI | None = None
+        self._fallback_llm: ChatOpenAI | None = None
         # BM25 缓存：key=知识库ID, value=(原文列表, BM25索引对象)
         self._bm25_cache: dict[str, tuple[list[str], object]] = {}
 
@@ -114,7 +116,7 @@ class QueryPipeline:
         1.0 = ORDER BY RAND() —— 每次结果可能不同
         """
         if self._llm is None:
-            self._llm = ChatOpenAI(
+            self._llm = ChatOpenAI(streaming=True,
                 model="deepseek-chat",
                 api_key=settings.DEEPSEEK_API_KEY,
                 base_url=settings.DEEPSEEK_BASE_URL,
@@ -132,83 +134,158 @@ class QueryPipeline:
         kb_id: Optional[str] = None,
         top_k: int | None = None,
     ) -> QueryResult:
+        ctx = reset_timing_ctx("query")
+        try:
+            """
+            完整 RAG 查询的入口方法。
+
+            走完整个管线的 6 个阶段，返回最终答案。
+
+            【流程概览】
+            ① 向量化问题
+            ② 混合检索（向量 + BM25 + RRF 融合）
+            ③ 重排序（BGE-Reranker 精排 Top-N）
+            ④ 构建 Prompt（System Prompt + 参考资料 + 问题）
+            ⑤ LLM 生成答案
+            ⑥ 封装返回结果
+
+            【无检索结果时的处理】
+            如果知识库为空或检索不到相关内容，直接用 LLM 回答（不提供参考资料）。
+            这时 confidence=0.0，表示答案未基于私有知识库。
+            """
+            retrieval_k = top_k or settings.RETRIEVAL_TOP_K  # 默认 10
+
+            # ─── ① Query 向量化 ───
+            # 把用户问题转成 1024 维向量（和文档 chunk 在同一空间）
+            query_vector = self.embedder.embed_query(question)
+
+            # ─── ② 混合检索 ───
+            # 两大召回通道 + RRF 融合
+            candidates = self._hybrid_retrieval(
+                kb_id=kb_id or "default",
+                query_text=question,
+                query_vector=query_vector,
+                top_k=retrieval_k,
+            )
+
+            # 无检索结果 → 直接回答
+            if not candidates:
+                answer = self._generate_direct(question)
+                return QueryResult(answer=answer, sources=[], confidence=0.0)
+
+            # 提取候选文本（用于 reranker）
+            candidate_texts = [c["text"] for c in candidates]
+
+            # ─── ③ 重排序 ───
+            # 对候选做精排，从 10 个中选出最相关的 5 个
+            reranked = self.reranker.rerank(
+                question, candidate_texts,
+                top_k=settings.RERANK_TOP_K,  # 默认 5
+            )
+
+            # 整理重排序结果
+            top_docs: list[tuple[str, float]] = []
+            for idx, doc, score in reranked:
+                top_docs.append((doc, score))
+
+            if not top_docs:
+                answer = self._generate_direct(question)
+                return QueryResult(answer=answer, sources=[], confidence=0.0)
+
+            # ─── ④ 上下文构建 + ⑤ LLM 生成 ───
+            # 用 OrderedDict.fromkeys 去重且保持顺序
+            # 相当于 Java 的 LinkedHashSet
+            context_parts = [doc for doc, _ in top_docs]
+            sources = list(OrderedDict.fromkeys(
+                c.get("doc_id", "") for c in candidates
+            ))
+            confidence = top_docs[0][1] if top_docs else 0.0
+            answer = self._generate(question, context_parts)
+
+            # ─── ⑥ 返回结果 ───
+            return QueryResult(
+                answer=answer,
+                sources=sources[:settings.RERANK_TOP_K],
+                confidence=round(confidence, 4),
+            )
+        finally:
+            ctx.flush()
+
+
+    @property
+    def fallback_llm(self) -> Optional[ChatOpenAI]:
         """
-        完整 RAG 查询的入口方法。
+        备用 LLM 客户端（惰性加载）。
 
-        走完整个管线的 6 个阶段，返回最终答案。
+        【什么是降级（Fallback）？】
+        降级是系统弹性设计的经典策略：当主服务不可用时，自动切换到备用服务，
+        保证核心功能「降而不瘫」。在 RAG 场景中，如果 DeepSeek 挂了，
+        我们还能用硅基流动（SiliconFlow）等第三方 API 继续回答问题。
 
-        【流程概览】
-        ① 向量化问题
-        ② 混合检索（向量 + BM25 + RRF 融合）
-        ③ 重排序（BGE-Reranker 精排 Top-N）
-        ④ 构建 Prompt（System Prompt + 参考资料 + 问题）
-        ⑤ LLM 生成答案
-        ⑥ 封装返回结果
-
-        【无检索结果时的处理】
-        如果知识库为空或检索不到相关内容，直接用 LLM 回答（不提供参考资料）。
-        这时 confidence=0.0，表示答案未基于私有知识库。
+        【惰性加载（Lazy Loading）】
+        如果用户没配 FALLBACK_LLM_MODEL，这个属性返回 None，降级逻辑不生效。
+        只有在 settings.FALLBACK_LLM_MODEL 有值时，才在第一次访问时创建客户端。
+        这样做的好处是：不配备用 = 零开销。
         """
-        retrieval_k = top_k or settings.RETRIEVAL_TOP_K  # 默认 10
+        if self._fallback_llm is None and settings.FALLBACK_LLM_MODEL:
+            self._fallback_llm = ChatOpenAI(streaming=True,
+                model=settings.FALLBACK_LLM_MODEL,
+                api_key=settings.FALLBACK_LLM_API_KEY,
+                base_url=settings.FALLBACK_LLM_BASE_URL,
+                temperature=0.3,
+            )
+        return self._fallback_llm
 
-        # ─── ① Query 向量化 ───
-        # 把用户问题转成 1024 维向量（和文档 chunk 在同一空间）
-        query_vector = self.embedder.embed_query(question)
+    def _invoke_llm(self, messages: list) -> Any:
+        """
+        带熔断和降级的 LLM 调用。
 
-        # ─── ② 混合检索 ───
-        # 两大召回通道 + RRF 融合
-        candidates = self._hybrid_retrieval(
-            kb_id=kb_id or "default",
-            query_text=question,
-            query_vector=query_vector,
-            top_k=retrieval_k,
-        )
+        【什么是熔断器（Circuit Breaker）？】
+        熔断器是微服务架构中的经典保护模式，类似家里的保险丝：
+        当电路过载（连续失败），保险丝熔断，切断电流，防止火灾（连锁崩溃）。
+        代码层面：如果 LLM 连续失败 N 次，熔断器自动"开闸"，后续请求直接拒绝，
+        不再徒劳重试，避免浪费资源、加剧故障。
 
-        # 无检索结果 → 直接回答
-        if not candidates:
-            answer = self._generate_direct(question)
-            return QueryResult(answer=answer, sources=[], confidence=0.0)
+        【三态模型】（详见 resilience.py）
+          CLOSED    ->  正常状态，请求正常通行
+          OPEN      ->  熔断状态，直接拒绝请求（抛出 CircuitOpenError）
+          HALF_OPEN ->  半开状态，放行一个试探请求，成功->CLOSED，失败->OPEN
 
-        # 提取候选文本（用于 reranker）
-        candidate_texts = [c["text"] for c in candidates]
+        【本方法的执行流程】
+        1. 把主 LLM 调用封装成 try_primary 闭包
+        2. 通过 llm_circuit_breaker.execute() 执行
+           - 熔断器未开 -> 正常调用主 LLM
+           - 熔断器已开 -> 抛出 CircuitOpenError
+        3. 捕获 CircuitOpenError，尝试降级：
+           - 有备用 LLM -> 切换调用备用 LLM，记录降级日志
+           - 无备用 LLM -> 向上抛出异常，让上层处理
 
-        # ─── ③ 重排序 ───
-        # 对候选做精排，从 10 个中选出最相关的 5 个
-        reranked = self.reranker.rerank(
-            question, candidate_texts,
-            top_k=settings.RERANK_TOP_K,  # 默认 5
-        )
-
-        # 整理重排序结果
-        top_docs: list[tuple[str, float]] = []
-        for idx, doc, score in reranked:
-            top_docs.append((doc, score))
-
-        if not top_docs:
-            answer = self._generate_direct(question)
-            return QueryResult(answer=answer, sources=[], confidence=0.0)
-
-        # ─── ④ 上下文构建 + ⑤ LLM 生成 ───
-        # 用 OrderedDict.fromkeys 去重且保持顺序
-        # 相当于 Java 的 LinkedHashSet
-        context_parts = [doc for doc, _ in top_docs]
-        sources = list(OrderedDict.fromkeys(
-            c.get("doc_id", "") for c in candidates
-        ))
-        confidence = top_docs[0][1] if top_docs else 0.0
-        answer = self._generate(question, context_parts)
-
-        # ─── ⑥ 返回结果 ───
-        return QueryResult(
-            answer=answer,
-            sources=sources[:settings.RERANK_TOP_K],
-            confidence=round(confidence, 4),
-        )
+        【为什么用熔断而不是简单重试？】
+        重试会加剧问题：如果 DeepSeek API 真的挂了，每个请求都重试 3 次 =
+        3 倍的无效流量。熔断器快速失败（fail-fast），给下游喘息空间，
+        等恢复超时后再试探性地放行请求（HALF_OPEN）。
+        """
+        from .resilience import llm_circuit_breaker, CircuitOpenError
+        
+        def try_primary():
+            return self.llm.invoke(messages)
+        
+        try:
+            return llm_circuit_breaker.execute(try_primary)
+        except CircuitOpenError:
+            if self.fallback_llm is not None:
+                import logging
+                logging.getLogger("rag.resilience").warning(
+                    "[FALLBACK] Primary LLM circuit open, switching to fallback"
+                )
+                return self.fallback_llm.invoke(messages)
+            raise
 
     # =====================================================================
     # 混合检索：向量 + BM25 + RRF 融合
     # =====================================================================
 
+    @timed("hybrid_retrieval")
     def _hybrid_retrieval(
         self,
         kb_id: str,
@@ -251,6 +328,7 @@ class QueryPipeline:
     # BM25 关键字检索
     # =====================================================================
 
+    @timed("bm25_search")
     def _bm25_search(
         self,
         kb_id: str,
@@ -356,6 +434,7 @@ class QueryPipeline:
     # RRF 融合算法
     # =====================================================================
 
+    @timed("rrf_fusion")
     def _rrf_fusion(
         self,
         vector_results: List[dict],
@@ -412,6 +491,7 @@ class QueryPipeline:
     # LLM 生成
     # =====================================================================
 
+    @timed("llm_generate")
     def _generate(self, question: str, context_parts: List[str]) -> str:
         """
         基于检索到的上下文，让 LLM 生成答案。
@@ -454,6 +534,7 @@ class QueryPipeline:
         response = self.llm.invoke(messages)
         return response.content if hasattr(response, "content") else str(response)
 
+    @timed("llm_generate_direct")
     def _generate_direct(self, question: str) -> str:
         """
         无参考资料时的直接回答（不依赖知识库）。
@@ -467,7 +548,7 @@ class QueryPipeline:
             SystemMessage(content="你是一个专业的知识问答助手。请简洁准确地回答用户的问题。使用中文。"),
             HumanMessage(content=question),
         ]
-        response = self.llm.invoke(messages)
+        response = self._invoke_llm(messages)
         return response.content if hasattr(response, "content") else str(response)
 
     # =====================================================================

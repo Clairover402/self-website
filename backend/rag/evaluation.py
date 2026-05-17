@@ -52,9 +52,16 @@ LangChain 官方的 LLM 应用可观测性平台，可以追踪：
 """
 
 import json
+import os
 from typing import List, Optional
 from dataclasses import dataclass, asdict
 from pathlib import Path
+
+from core.config import settings
+
+# 将 OpenAI 兼容的 API 配置注入环境变量，供 ragas 库使用
+os.environ.setdefault('OPENAI_API_KEY', settings.OPENAI_API_KEY)
+os.environ.setdefault('OPENAI_BASE_URL', settings.OPENAI_BASE_URL)
 
 
 # =========================================================================
@@ -147,7 +154,7 @@ def evaluate_with_ragas(samples: List[EvalSample]) -> EvalResult:
             context_precision,     # 上下文精度
             context_recall,        # 上下文召回率
         )
-        from ragas.dataset_schema import SingleTurnSample
+        from ragas.dataset_schema import SingleTurnSample, EvaluationDataset
 
         # 将我们的数据结构转为 RAGAS 期望的格式
         ragas_samples = []
@@ -161,7 +168,7 @@ def evaluate_with_ragas(samples: List[EvalSample]) -> EvalResult:
 
         # 运行评估（这一步最耗时，每个样本都要调用 LLM 做判断）
         result = evaluate(
-            dataset=ragas_samples,
+            dataset=EvaluationDataset(samples=ragas_samples),
             metrics=[
                 faithfulness,
                 answer_relevancy,
@@ -183,6 +190,62 @@ def evaluate_with_ragas(samples: List[EvalSample]) -> EvalResult:
     except ImportError:
         print("⚠️  ragas 未安装，跳过评估。运行 pip install ragas 安装。")
         return EvalResult(sample_count=len(samples))
+
+def evaluate_single_query(
+    question: str,
+    answer: str,
+    contexts: list[str],
+    ground_truth: str = "",
+):
+    """
+    评估单次 RAG 查询。
+    
+    有 ground_truth 时计算全部 4 项指标；
+    无 ground_truth 时仅计算 Faithfulness + Answer Relevancy。
+    """
+    try:
+        from ragas import evaluate
+        from ragas.metrics import (
+            faithfulness,
+            answer_relevancy,
+            context_precision,
+            context_recall,
+        )
+        from ragas.dataset_schema import SingleTurnSample, EvaluationDataset
+
+        # 根据是否有 ground_truth 选择指标
+        if ground_truth:
+            metrics = [faithfulness, answer_relevancy, context_precision, context_recall]
+        else:
+            metrics = [faithfulness, answer_relevancy]
+
+        sample = SingleTurnSample(
+            user_input=question,
+            response=answer,
+            reference=ground_truth or "",
+            retrieved_contexts=contexts,
+        )
+
+        result = evaluate(dataset=EvaluationDataset(samples=[sample]), metrics=metrics)
+        df = result.to_pandas()
+
+        resp = {
+            "faithfulness": float(df["faithfulness"].iloc[0]) if "faithfulness" in df else 0.0,
+            "answer_relevancy": float(df["answer_relevancy"].iloc[0]) if "answer_relevancy" in df else 0.0,
+        }
+        if ground_truth:
+            resp["context_precision"] = float(df["context_precision"].iloc[0]) if "context_precision" in df else 0.0
+            resp["context_recall"] = float(df["context_recall"].iloc[0]) if "context_recall" in df else 0.0
+
+        return resp
+
+    except ImportError:
+        print("⚠️  ragas 未安装，跳过评估。运行 pip install ragas 安装。")
+        return {
+            "faithfulness": 0.0,
+            "answer_relevancy": 0.0,
+        }
+
 
 
 # =========================================================================
@@ -258,3 +321,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     generate_eval_report(args.test_data, args.kb_id, args.output)
+
+
+

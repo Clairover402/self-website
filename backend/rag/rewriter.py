@@ -18,6 +18,7 @@ from typing import List
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from .monitor import timed
 from core.config import settings
 
 
@@ -33,6 +34,7 @@ class QueryRewriter:
 
     def __init__(self):
         self._llm: ChatOpenAI | None = None
+        self._fallback_llm: ChatOpenAI | None = None
 
     @property
     def llm(self) -> ChatOpenAI:
@@ -47,10 +49,24 @@ class QueryRewriter:
             )
         return self._llm
 
+    @property
+    def fallback_llm(self):
+        """备用 LLM（硅基流动），惰性加载"""
+        if self._fallback_llm is None and settings.FALLBACK_LLM_MODEL:
+            self._fallback_llm = ChatOpenAI(
+                model=settings.FALLBACK_LLM_MODEL,
+                api_key=settings.FALLBACK_LLM_API_KEY,
+                base_url=settings.FALLBACK_LLM_BASE_URL,
+                temperature=0.1,
+                max_tokens=256,
+            )
+        return self._fallback_llm
+
     # =====================================================================
     # 公共入口
     # =====================================================================
 
+    @timed("query_rewrite")
     def rewrite(self, question: str) -> RewrittenQuery:
         """
         按配置策略改写用户问题。
@@ -151,10 +167,25 @@ class QueryRewriter:
     # =====================================================================
 
     def _call_llm(self, system_prompt: str, user_prompt: str) -> str:
-        """调用 LLM 并返回文本内容"""
+        """调用 LLM 并返回文本内容，支持降级"""
+        from .resilience import llm_circuit_breaker, CircuitOpenError
+        import logging
+        _log = logging.getLogger("rag.resilience")
+        
         messages = [
             SystemMessage(content=system_prompt),
             HumanMessage(content=user_prompt),
         ]
-        response = self.llm.invoke(messages)
-        return response.content if hasattr(response, "content") else str(response)
+        
+        def try_primary():
+            return self.llm.invoke(messages)
+        
+        try:
+            response = llm_circuit_breaker.execute(try_primary)
+            return response.content if hasattr(response, "content") else str(response)
+        except CircuitOpenError:
+            if self.fallback_llm is not None:
+                _log.warning("[FALLBACK] QueryRewriter switching to fallback LLM")
+                response = self.fallback_llm.invoke(messages)
+                return response.content if hasattr(response, "content") else str(response)
+            raise

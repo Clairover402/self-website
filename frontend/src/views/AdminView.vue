@@ -79,6 +79,10 @@
               <textarea v-model="newKbContent" placeholder="知识库内容（可选，将自动生成为文档）" rows="3" class="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500 font-mono"></textarea>
               <label class="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-400 cursor-pointer">
                 <input v-model="newKbDefault" type="checkbox" class="rounded" /> 默认
+              <select v-model="newKbVisibility" class="px-2 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg text-sm">
+                <option value="private">私有</option>
+                <option value="public">公开访问</option>
+              </select>
               </label>
               <button @click="createKb" :disabled="!newKbName.trim()" class="px-4 py-2 bg-primary-500 text-white text-sm rounded-lg hover:bg-primary-600 disabled:opacity-50 transition-colors">创建</button>
             </div>
@@ -236,6 +240,7 @@ const kbList = ref<any[]>([])
 const newKbName = ref('')
 const newKbDesc = ref('')
 const newKbDefault = ref(false)
+const newKbVisibility = ref("private")
 const newKbContent = ref('')
 const expandedKb = ref<string | null>(null)
 

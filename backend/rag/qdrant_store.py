@@ -1,4 +1,4 @@
-"""
+﻿"""
 =============================================================================
 RAG 核心模块 — Qdrant 向量存储 (Qdrant Store)
 =============================================================================
@@ -45,6 +45,7 @@ from uuid import uuid4  # 生成全局唯一 ID
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
+    HnswConfigDiff,
     Distance,        # 距离度量方式：COSINE（余弦）、EUCLID（欧几里得）、DOT（点积）
     VectorParams,    # 向量参数：维度大小 + 距离度量
     PointStruct,     # 一个 Point 的数据结构：ID + 向量 + Payload
@@ -264,14 +265,25 @@ class QdrantStore:
         Returns:
             搜索结果列表，每项包含：id, text, doc_id, chunk_index, score
         """
-        top_k = top_k or settings.RETRIEVAL_TOP_K
+        import logging
+        from qdrant_client.http.exceptions import UnexpectedResponse
 
-        results = self.client.query_points(
-            collection_name=self.collection_name(kb_id),
-            query=query_vector,
-            limit=top_k,
-            with_payload=True,
-        )
+        _logger = logging.getLogger("rag.qdrant_store")
+        top_k = top_k or settings.RETRIEVAL_TOP_K
+        collection_name = self.collection_name(kb_id)
+
+        try:
+            results = self.client.query_points(
+                collection_name=collection_name,
+                query=query_vector,
+                limit=top_k,
+                with_payload=True,
+            )
+        except UnexpectedResponse as e:
+            if e.status_code == 404:
+                _logger.warning("Qdrant collection '%s' not found, returning empty", collection_name)
+                return []
+            raise
 
         # 格式化返回结果
         return [

@@ -38,6 +38,7 @@ from dataclasses import dataclass, field
 from .parser import DocumentParser, ParsedDocument
 from .cleaner import DocumentCleaner
 from .splitter import TextSplitter
+from .monitor import timed, reset_timing_ctx
 from .embedding import EmbeddingService
 from .qdrant_store import QdrantStore
 
@@ -82,6 +83,7 @@ class IngestPipeline:
         self.embedder = EmbeddingService()
         self.store = QdrantStore()
 
+    @timed("ingest_total")
     def ingest(
         self,
         kb_id: str,
@@ -113,12 +115,21 @@ class IngestPipeline:
         try:
             # ─── 阶段 1：解析（Extract）───
             # 把不同格式的文件统一转成纯文本
+            from .monitor import get_timing_ctx
+            _ctx = get_timing_ctx()
+            import time as _time
+            
+            _t0 = _time.perf_counter()
             parsed: ParsedDocument = self.parser.parse(content, filename, mime_type)
+            _ctx.record("parser_parse", (_time.perf_counter() - _t0) * 1000)
 
             # ─── 阶段 2：清洗（Transform）───
             # 去除 HTML 标签、URL、控制字符等噪音
+            _t0 = _time.perf_counter()
             cleaned: str = self.cleaner.clean(parsed.text)
+            _ctx.record("cleaner_clean", (_time.perf_counter() - _t0) * 1000)
             if not cleaned.strip():
+                _ctx.flush()
                 return IngestResult(
                     success=False, kb_id=kb_id, doc_id=doc_id,
                     error="文档解析后内容为空，可能是损坏的文件或不支持的格式",
@@ -126,11 +137,15 @@ class IngestPipeline:
 
             # ─── 阶段 3：切分（Split）───
             # 将长文档切成多个语义 chunk
+            _t0 = _time.perf_counter()
             chunks: List[str] = self.splitter.split(cleaned)
+            _ctx.record("splitter_split", (_time.perf_counter() - _t0) * 1000)
 
             # ─── 阶段 4：向量化（Embed）───
             # 每个 chunk 转成 1024 维向量，批量处理
+            _t0 = _time.perf_counter()
             embeddings = self.embedder.embed_documents(chunks)
+            _ctx.record("embed_documents", (_time.perf_counter() - _t0) * 1000)
 
             # ─── 阶段 5：确保 Collection 存在 ───
             # 类似 CREATE TABLE IF NOT EXISTS
@@ -148,8 +163,11 @@ class IngestPipeline:
                 }
                 for i, (chunk, emb) in enumerate(zip(chunks, embeddings))
             ]
+            _t0 = _time.perf_counter()
             chunk_ids = self.store.upsert_chunks(kb_id, chunk_data)
+            _ctx.record("qdrant_upsert", (_time.perf_counter() - _t0) * 1000)
 
+            _ctx.flush()
             return IngestResult(
                 success=True,
                 kb_id=kb_id,
@@ -160,6 +178,7 @@ class IngestPipeline:
 
         except Exception as e:
             # 兜底错误处理
+            _ctx.flush()
             return IngestResult(
                 success=False,
                 kb_id=kb_id,

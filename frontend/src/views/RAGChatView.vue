@@ -16,6 +16,17 @@
         <p class="text-gray-500 dark:text-gray-400">基于 RAG 的智能问答系统</p>
       </header>
 
+      <!-- Toast notifications -->
+      <div
+        v-if="toast.show"
+        :class="[
+          'fixed top-4 right-4 z-50 px-5 py-3 rounded-xl shadow-lg text-sm font-medium transition-all duration-300',
+          toast.type === 'error' ? 'bg-red-500 text-white' : 'bg-yellow-500 text-white'
+        ]"
+      >
+        {{ toast.message }}
+      </div>
+
       <!-- KB Selector -->
       <div class="mb-4 flex items-center gap-3">
         <label class="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">知识库：</label>
@@ -71,7 +82,66 @@
                   : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-bl-md'
               ]"
             >
-              <div class="whitespace-pre-wrap text-sm leading-relaxed">{{ msg.content }}</div>
+              <div v-if="msg.thinking" class="text-xs opacity-60 mb-1 animate-pulse">搜索中...</div><div class="whitespace-pre-wrap text-sm leading-relaxed">{{ msg.content }}</div>
+              <!-- Evaluate -->
+              <div v-if="msg.role === 'assistant' && msg.content && msg.content.length > 10" class="mt-2 pt-2 border-t border-white/10">
+                <div v-if="!msg.evalResult && !msg.evaluating">
+                  <button
+                    @click="evaluateMessage(i)"
+                    class="text-xs px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
+                  >
+                    📊 评估
+                  </button>
+                </div>
+                <div v-if="msg.evaluating" class="text-xs opacity-70">
+                  ⏳ 评估中...
+                </div>
+                <div v-if="msg.evalResult" class="mt-2 space-y-1">
+                  <!-- Ground truth input -->
+                  <div v-if="!msg.evalDone" class="flex gap-2 mb-2">
+                    <input
+                      v-model="msg.groundTruth"
+                      type="text"
+                      placeholder="参考答案（可选，填了出4项指标）"
+                      class="flex-1 px-2 py-1 text-xs rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40"
+                    />
+                    <button @click="runEvaluate(i)" class="text-xs px-3 py-1 rounded-lg bg-white/20 hover:bg-white/30 transition-colors">
+                      开始
+                    </button>
+                  </div>
+                  <!-- Results -->
+                  <div v-if="msg.evalDone" class="space-y-1">
+                    <div class="flex items-center gap-2 text-xs">
+                      <span class="w-24 opacity-70">忠实度</span>
+                      <div class="flex-1 h-2 bg-white/10 rounded-full overflow-hidden">
+                        <div class="h-full bg-green-400 rounded-full" :style="{ width: (msg.evalResult.faithfulness * 100) + '%' }"></div>
+                      </div>
+                      <span class="w-10 text-right">{{ (msg.evalResult.faithfulness * 100).toFixed(0) }}%</span>
+                    </div>
+                    <div class="flex items-center gap-2 text-xs">
+                      <span class="w-24 opacity-70">答案相关性</span>
+                      <div class="flex-1 h-2 bg-white/10 rounded-full overflow-hidden">
+                        <div class="h-full bg-blue-400 rounded-full" :style="{ width: (msg.evalResult.answer_relevancy * 100) + '%' }"></div>
+                      </div>
+                      <span class="w-10 text-right">{{ (msg.evalResult.answer_relevancy * 100).toFixed(0) }}%</span>
+                    </div>
+                    <div v-if="msg.evalResult.context_precision != null" class="flex items-center gap-2 text-xs">
+                      <span class="w-24 opacity-70">上下文精度</span>
+                      <div class="flex-1 h-2 bg-white/10 rounded-full overflow-hidden">
+                        <div class="h-full bg-purple-400 rounded-full" :style="{ width: (msg.evalResult.context_precision * 100) + '%' }"></div>
+                      </div>
+                      <span class="w-10 text-right">{{ (msg.evalResult.context_precision * 100).toFixed(0) }}%</span>
+                    </div>
+                    <div v-if="msg.evalResult.context_recall != null" class="flex items-center gap-2 text-xs">
+                      <span class="w-24 opacity-70">上下文召回率</span>
+                      <div class="flex-1 h-2 bg-white/10 rounded-full overflow-hidden">
+                        <div class="h-full bg-orange-400 rounded-full" :style="{ width: (msg.evalResult.context_recall * 100) + '%' }"></div>
+                      </div>
+                      <span class="w-10 text-right">{{ (msg.evalResult.context_recall * 100).toFixed(0) }}%</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
               <!-- Sources -->
               <div v-if="msg.sources && msg.sources.length > 0" class="mt-2 pt-2 border-t border-white/20">
                 <p class="text-xs opacity-70 mb-1">📚 参考来源：</p>
@@ -141,8 +211,13 @@ import { ragApi } from "@/api";
 interface Message {
   role: "user" | "assistant";
   content: string;
+  thinking?: boolean;
   sources?: string[];
   confidence?: number;
+  evalResult?: any;
+  evaluating?: boolean;
+  groundTruth?: string;
+  evalDone?: boolean;
 }
 
 const messages = ref<Message[]>([]);
@@ -151,6 +226,18 @@ const isStreaming = ref(false);
 const selectedKbId = ref("");
 const knowledgeBases = ref<{ id: string; name: string }[]>([]);
 const messagesContainer = ref<HTMLElement | null>(null);
+const toast = ref<{ show: boolean; message: string; type: string }>({
+  show: false,
+  message: "",
+  type: "error",
+});
+
+function showToast(message: string, type: string = "error") {
+  toast.value = { show: true, message, type };
+  setTimeout(() => {
+    toast.value.show = false;
+  }, 4000);
+}
 
 const quickQuestions = [
   "介绍一下你自己",
@@ -169,6 +256,54 @@ onMounted(async () => {
   }
 });
 
+async function evaluateMessage(index: number) {
+  const msg = messages.value[index];
+  if (!msg || msg.role !== "assistant") return;
+  msg.evalResult = {};
+  msg.evaluating = false;
+  msg.evalDone = false;
+  msg.groundTruth = "";
+  // Show the ground truth input first
+  messages.value[index] = { ...msg, evalResult: {} };
+}
+
+async function runEvaluate(index: number) {
+  const msg = messages.value[index];
+  if (!msg) return;
+  msg.evaluating = true;
+  messages.value[index] = { ...msg };
+
+  try {
+    // Find the corresponding user question
+    let userQuestion = "";
+    for (let i = index - 1; i >= 0; i--) {
+      if (messages.value[i].role === "user") {
+        userQuestion = messages.value[i].content;
+        break;
+      }
+    }
+
+    const res: any = await ragApi.evaluate(
+      userQuestion || "",
+      selectedKbId.value || undefined,
+      msg.groundTruth || undefined
+    );
+
+    if (res.success) {
+      msg.evalResult = res.data;
+      msg.evalDone = true;
+    } else {
+      showToast(res.errorMsg || "评估失败");
+    }
+  } catch (e: any) {
+    showToast(`评估失败: ${e.message || e}`);
+    msg.evalResult = null;
+  } finally {
+    msg.evaluating = false;
+    messages.value[index] = { ...msg };
+  }
+}
+
 function scrollToBottom() {
   nextTick(() => {
     if (messagesContainer.value) {
@@ -186,7 +321,7 @@ async function sendMessage(text: string) {
   scrollToBottom();
 
   isStreaming.value = true;
-  const assistantMsg: Message = { role: "assistant", content: "" };
+  const assistantMsg: Message = { role: "assistant", content: "", thinking: true };
   messages.value.push(assistantMsg);
 
   try {
@@ -198,6 +333,16 @@ async function sendMessage(text: string) {
     });
 
     if (!response.ok) {
+      if (response.status === 429) {
+        assistantMsg.content = "系统繁忙，请稍后再试";
+        showToast("系统繁忙，请稍后再试", "warning");
+        return;
+      }
+      if (response.status === 503) {
+        assistantMsg.content = "AI 服务暂时不可用（DeepSeek API 异常），请稍后再试或检查日志";
+        showToast("AI 服务暂时不可用，请稍后再试或检查日志", "error");
+        return;
+      }
       throw new Error(`HTTP ${response.status}`);
     }
 
@@ -218,11 +363,13 @@ async function sendMessage(text: string) {
       for (const line of lines) {
         if (line.startsWith("data: ")) {
           const data = line.slice(6);
+          if (data === "[THINKING]正在检索知识库...") { assistantMsg.thinking = true; continue; }
+          
           if (data === "[DONE]") continue;
           if (data.startsWith("[ERROR]")) {
             assistantMsg.content += `\n⚠️ ${data.slice(7)}`;
           } else {
-            assistantMsg.content += data;
+            assistantMsg.thinking = false; assistantMsg.content += data;
           }
           scrollToBottom();
         }

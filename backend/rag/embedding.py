@@ -32,6 +32,8 @@ Java 中相当于：private static final EmbeddingService INSTANCE = new ...();
 """
 
 from typing import List
+from collections import OrderedDict
+from threading import Lock
 
 # SentenceTransformer：HuggingFace 生态的嵌入模型统一接口
 # 类比 Java 的 JDBC —— 不管底层是 MySQL 还是 PostgreSQL，操作方式都一样
@@ -39,6 +41,44 @@ from sentence_transformers import SentenceTransformer
 
 # 项目全局配置，类似 Java 的 @Value 注入或 .properties 文件
 from core.config import settings
+
+
+
+class LRUCache:
+    """
+    线程安全的 LRU 缓存，基于 OrderedDict。
+    用于缓存 embed_query() 结果。
+    """
+
+    def __init__(self, maxsize: int = 10000):
+        self.maxsize = maxsize
+        self.cache: OrderedDict[str, list] = OrderedDict()
+        self.hits = 0
+        self.misses = 0
+        self._lock = Lock()
+
+    def get(self, key: str):
+        with self._lock:
+            if key in self.cache:
+                self.cache.move_to_end(key)
+                self.hits += 1
+                return self.cache[key]
+            self.misses += 1
+            return None
+
+    def set(self, key: str, value):
+        with self._lock:
+            if key in self.cache:
+                self.cache.move_to_end(key)
+            else:
+                if len(self.cache) >= self.maxsize:
+                    self.cache.popitem(last=False)
+            self.cache[key] = value
+
+    @property
+    def hit_rate(self) -> float:
+        total = self.hits + self.misses
+        return self.hits / total if total > 0 else 0.0
 
 
 class EmbeddingService:
@@ -63,6 +103,9 @@ class EmbeddingService:
     _instance: "EmbeddingService | None" = None
     # 类变量，存储已加载的模型对象
     _model: SentenceTransformer | None = None
+    # LRU 缓存（类级别，所有实例共享）
+    _lru_cache: LRUCache | None = None
+    _lru_call_count: int = 0  # 用于定期输出命中率
 
     def __new__(cls) -> "EmbeddingService":
         """

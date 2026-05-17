@@ -75,6 +75,7 @@ class KnowledgeBaseModel(Base):
     name = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)  # TEXT 类型无长度限制
     is_default = Column(Boolean, default=False)
+    visibility = Column(String(16), default="private", nullable=False)
     # default=datetime.now 是函数引用，每次 INSERT 时调用
     created_at = Column(DateTime, default=datetime.now)
     # onupdate=datetime.now 在每次 UPDATE 时自动更新

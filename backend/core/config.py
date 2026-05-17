@@ -91,10 +91,24 @@ class Settings(BaseSettings):
     # 改写策略：simple(单轮优化) / multi(多查询生成) / hyde(假设文档)
     QUERY_REWRITE_STRATEGY: str = "simple"
 
+    # ==================== 降级与弹性 ====================
+
+    # 限流 QPS
+    RATE_LIMIT_QPS: int = 100
+
+    # 备用 LLM（硅基流动免费模型）
+    FALLBACK_LLM_MODEL: str = ""
+    FALLBACK_LLM_BASE_URL: str = "https://api.siliconflow.cn/v1"
+    FALLBACK_LLM_API_KEY: str = ""
+
+    # RAGAS 评估使用的 OpenAI 兼容 API 配置（复用 DeepSeek）
+    OPENAI_API_KEY: str = ""
+    OPENAI_BASE_URL: str = "https://api.deepseek.com/v1"
+
     # ==================== 配置元信息 ====================
 
     # 告诉 Pydantic 从 .env 文件加载配置
-    model_config = SettingsConfigDict(env_file=".env")
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
 # 全局单例（模块级变量）

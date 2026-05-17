@@ -57,6 +57,7 @@ class KnowledgeBaseCreate(BaseModel):
     name: str = Field(..., description="知识库名称")
     description: Optional[str] = Field(None, description="知识库描述")
     is_default: Optional[bool] = Field(False, description="是否设为默认")
+    visibility: Optional[str] = Field("private", description="可见性: private | public")
 
 
 class KnowledgeBaseUpdate(BaseModel):
@@ -130,3 +131,18 @@ class RAGConversation(BaseModel):
     created_at: datetime = Field(..., description="创建时间")
 
     model_config = {"from_attributes": True}
+
+
+class RAGEvaluateRequest(BaseModel):
+    """RAGAS 评估请求"""
+    question: str = Field(..., description="评估问题")
+    knowledge_base_id: Optional[str] = Field(None, description="知识库 ID")
+    ground_truth: Optional[str] = Field(None, description="参考答案（可选）")
+
+
+class RAGEvaluateResponse(BaseModel):
+    """RAGAS 评估响应"""
+    faithfulness: float = Field(0.0, description="忠实度")
+    answer_relevancy: float = Field(0.0, description="答案相关性")
+    context_precision: Optional[float] = Field(None, description="上下文精度（需 ground_truth）")
+    context_recall: Optional[float] = Field(None, description="上下文召回率（需 ground_truth）")

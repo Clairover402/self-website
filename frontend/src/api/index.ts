@@ -97,6 +97,9 @@ export const ragApi = {
   /** 对话记录 */
   getConversations: (kb_id?: string) =>
     api.get("/rag/conversations", { params: kb_id ? { kb_id } : {} }),
+
+  /** RAGAS 评估 */
+  evaluate: (question: string, kb_id?: string, ground_truth?: string) => api.post('/rag/evaluate', { question, knowledge_base_id: kb_id, ground_truth }, { timeout: 30000 }),
 };
 
 /** RAG 管理后台 API（JWT 保护，需在请求头中带 Authorization: Bearer <token>） */
