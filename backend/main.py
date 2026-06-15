@@ -13,6 +13,7 @@ API 文档：
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy.exc import IntegrityError
@@ -97,6 +98,8 @@ app.include_router(contact.router, prefix="/api/contact", tags=["联系方式"])
 app.include_router(award.router, prefix="/api/awards", tags=["奖项"])
 
 
-@app.get("/", tags=["根路径"])
-async def root():
-    return {"message": "欢迎访问 RAG 个人网站 API"}
+# 前端静态文件（vite build 后生成在 frontend/dist/）
+import os
+frontend_dist = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+if os.path.isdir(frontend_dist):
+    app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")
