@@ -75,7 +75,7 @@ API 文档：http://localhost:8000/docs
 
 ## 开发路线图
 
-### Phase 1 (当前)
+### Phase 1 
 - [x] 官网首页
 - [x] 技术博客展示
 - [x] 个人作品集
