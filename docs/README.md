@@ -61,7 +61,7 @@ npm install
 npm run dev
 ```
 
-访问 http://localhost:5173
+
 
 ### 后端
 
@@ -71,7 +71,6 @@ pip install -e .
 uvicorn main:app --reload --port 8000
 ```
 
-API 文档：http://localhost:8000/docs
 
 ## 开发路线图
 
