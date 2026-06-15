@@ -1,4 +1,4 @@
-﻿"""
+"""
 Admin router - JWT-protected management endpoints.
 
 All endpoints except /login require Bearer token authentication.
@@ -11,6 +11,7 @@ from schemas.blog import Blog, BlogCreate, BlogUpdate
 from schemas.project import ProjectCreate, ProjectUpdate
 from schemas.award import AwardCreate, AwardUpdate
 from schemas.contact import Contact
+from schemas.common import PaginationParams, PaginatedResult
 from schemas.rag import (
     KnowledgeBase,
     KnowledgeBaseCreate,
@@ -175,11 +176,19 @@ async def admin_delete_knowledge_base(kb_id: str, _=Depends(require_admin)):
 
 # ===== RAG Document CRUD =====
 
-@router.get("/rag/documents", response_model=Result[list[Document]])
-async def admin_get_documents(kb_id: str = Query(None, description="知识库 ID 过滤"), _=Depends(require_admin)):
-    """获取文档列表"""
-    docs = rag_service.get_documents(kb_id)
-    return Result.ok(data=docs, total=len(docs))
+@router.get("/rag/documents", response_model=Result[PaginatedResult[Document]])
+async def admin_get_documents(
+    kb_id: str = Query(None, description="知识库 ID 过滤"),
+    pagination: PaginationParams = Depends(),
+    _=Depends(require_admin),
+):
+    """获取文档列表（分页）"""
+    items, total = rag_service.get_documents(kb_id, page=pagination.page, page_size=pagination.page_size)
+    return Result.ok(data=PaginatedResult(
+        items=items, total=total,
+        page=pagination.page, page_size=pagination.page_size,
+        total_pages=(total + pagination.page_size - 1) // pagination.page_size
+    ))
 
 
 @router.post("/rag/documents", response_model=Result[DocumentUploadResponse])

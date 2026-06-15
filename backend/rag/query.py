@@ -1,3 +1,4 @@
+import logging
 """
 =============================================================================
 RAG 核心模块 — Query 管线 (Query Pipeline)
@@ -47,6 +48,8 @@ RAG 核心模块 — Query 管线 (Query Pipeline)
 
 from typing import List, Optional
 from dataclasses import dataclass, field
+
+logger = logging.getLogger(__name__)
 from collections import OrderedDict
 
 # LangChain 封装：ChatOpenAI = 任何兼容 OpenAI 接口的 LLM
@@ -566,5 +569,6 @@ class QueryPipeline:
         """
         if kb_id:
             self._bm25_cache.pop(kb_id, None)
+            logger.debug(f"[BM25] cache cleared for kb={kb_id}")
         else:
             self._bm25_cache.clear()

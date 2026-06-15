@@ -1,7 +1,8 @@
-﻿"""
+"""
 RAG 全链路耗时打点模块
 
 提供 @timed(name) 装饰器和 TimingContext 上下文管理器，
+from uuid import uuid4
 基于 contextvars 确保每个请求独立计时，支持异步安全。
 """
 
@@ -15,6 +16,25 @@ logger = logging.getLogger("rag.timing")
 
 # 每个请求/任务独立的计时上下文
 _timing_ctx: ContextVar[Optional["TimingContext"]] = ContextVar("timing_ctx", default=None)
+_request_id: ContextVar[str] = ContextVar("request_id", default="")
+
+
+class RequestContext:
+    """请求级上下文，贯穿 Controller → Service → RAG 调用链"""
+    __slots__ = ("request_id", "user_id")
+
+    def __init__(self, request_id: str = "", user_id: str = ""):
+        self.request_id = request_id or str(uuid4())[:8]
+        self.user_id = user_id
+
+    @staticmethod
+    def current() -> "RequestContext":
+        rid = _request_id.get()
+        return RequestContext(request_id=rid) if rid else RequestContext()
+
+    @staticmethod
+    def set_request_id(rid: str) -> None:
+        _request_id.set(rid)
 
 
 class TimingContext:
@@ -26,7 +46,8 @@ class TimingContext:
 
     def record(self, name: str, elapsed_ms: float):
         self.records.append((name, elapsed_ms))
-        logger.info(f"[TIMING] {name}: {elapsed_ms:.1f}ms")
+        rid = _request_id.get() or "-"
+        logger.info(f"[TIMING] [{rid}] {name}: {elapsed_ms:.1f}ms")
 
     def flush(self):
         """输出汇总耗时并清理"""
@@ -34,7 +55,8 @@ class TimingContext:
             return
         label_str = f" {self.label}" if self.label else ""
         total = sum(r[1] for r in self.records) if self.records else 0.0
-        logger.info(f"[TOTAL{label_str}] {total:.1f}ms")
+        rid = _request_id.get() or "-"
+        logger.info(f"[TOTAL{label_str}] [{rid}] {total:.1f}ms")
         self.records.clear()
 
 

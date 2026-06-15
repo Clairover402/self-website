@@ -11,6 +11,10 @@
 | 状态管理 | Pinia |
 | 路由 | Vue Router 4 |
 | 后端框架 | Python + FastAPI |
+| 向量数据库 | Qdrant |
+| RAG 模型 | DeepSeek-V4 + BGE-M3 + BGE-Reranker |
+| LLM 框架 | LangChain |
+| 评估框架 | RAGAS |
 | Markdown 渲染 | marked |
 | HTTP 客户端 | Axios |
 
@@ -39,6 +43,9 @@ SelfWebsite/
 │   ├── routers/               # API 路由
 │   ├── schemas/               # 请求/响应 Schema
 │   ├── services/             # 业务逻辑
+│   ├── rag/                 # RAG 管线（ingest/query/rerank/eval）
+│   ├── models/              # SQLAlchemy ORM
+│   ├── database/            # 数据库连接
 │   └── main.py
 │
 └── docs/                       # 开发文档
@@ -54,13 +61,13 @@ npm install
 npm run dev
 ```
 
-访问 http://localhost:3000
+访问 http://localhost:5173
 
 ### 后端
 
 ```bash
 cd backend
-pip install -r requirements.txt
+pip install -e .
 uvicorn main:app --reload --port 8000
 ```
 
@@ -76,12 +83,14 @@ API 文档：http://localhost:8000/docs
 - [x] 响应式布局
 - [x] RAG 入口预留
 
-### Phase 2 (待开发)
-- [ ] RAG 问答系统
-- [ ] 知识库管理后台
-- [ ] DeepSeek-V4 集成
-- [ ] 多文档解析
-- [ ] 向量数据库集成
+### Phase 2 (已完成)
+- [x] RAG 问答系统（流式 + 非流式）
+- [x] 知识库管理后台（JWT 保护）
+- [x] DeepSeek-V4 集成（自动降级）
+- [x] 多文档解析（PDF/Word/Markdown/TXT）
+- [x] 向量数据库集成（Qdrant + BM25 混合检索）
+- [x] RAGAS 评估（单条 + 批量）
+- [x] 请求级全链路监控
 
 ## 页面列表
 
@@ -93,8 +102,15 @@ API 文档：http://localhost:8000/docs
 | /projects | 作品集 |
 | /projects/:id | 项目详情 |
 | /about | 关于页面 |
-| /rag | RAG 入口页（预留）|
-| /rag/chat | AI 对话页（预留）|
+| /rag | RAG 知识库入口 |
+| /rag/chat | AI 智能对话（RAG 流式）|
+
+## RAG 架构
+
+```
+用户提问 → Query 改写 → 多查询混合检索（BGE-M3 + BM25 + RRF）
+         → BGE-Reranker 精排 → DeepSeek-V4 生成 → SSE 流式返回
+```
 
 ## API 接口
 
@@ -106,6 +122,17 @@ API 文档：http://localhost:8000/docs
 - `GET /api/projects` - 获取项目列表
 - `GET /api/projects/:id` - 获取项目详情
 
-### RAG (预留)
-- `POST /api/rag/query` - 问答查询
-- `GET /api/rag/knowledge-bases` - 获取知识库列表
+### RAG 公开接口
+- `POST /api/rag/query` - 问答查询（非流式）
+- `POST /api/rag/query/stream` - 问答查询（SSE 流式）
+- `POST /api/rag/evaluate` - RAGAS 单条评估
+- `GET /api/rag/knowledge-bases` - 知识库列表
+- `GET /api/rag/conversations` - 对话记录（分页）
+- `GET /api/health` - 健康检查
+
+### 管理后台（JWT 保护）
+- `POST /api/admin/login` - 管理员登录
+- `GET /api/admin/rag/documents` - 文档列表（分页）
+- `POST /api/admin/rag/documents` - 上传文档
+- `DELETE /api/admin/rag/documents/{id}` - 删除文档
+- `CRUD /api/admin/rag/knowledge-bases` - 知识库 CRUD

@@ -1,4 +1,4 @@
-﻿"""
+"""
 RAG 个人网站 API 入口
 
 该模块为 FastAPI 应用的入口点，负责应用配置、中间件和路由注册。
@@ -20,6 +20,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from core.config import settings
 from core.auth import check_admin_security
+from rag.monitor import RequestContext, reset_timing_ctx, _timing_ctx
 from core.logging_config import setup_logging
 from core.exception_handlers import (
     app_exception_handler,
@@ -58,6 +59,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Middleware: 请求级上下文贯穿
+@app.middleware("http")
+async def request_context_middleware(request, call_next):
+    from uuid import uuid4
+    rid = str(uuid4())[:8]
+    RequestContext.set_request_id(rid)
+    reset_timing_ctx(label=f"{request.method} {request.url.path}")
+    response = await call_next(request)
+    ctx = _timing_ctx.get()
+    if ctx:
+        ctx.flush()
+    return response
 
 # ===== Exception Handlers =====
 app.add_exception_handler(Exception, generic_exception_handler)

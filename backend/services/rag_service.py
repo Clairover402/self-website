@@ -102,7 +102,7 @@ class RAGService:
             confidence=result.confidence,
         )
 
-    def query_stream(self, question: str, knowledge_base_id: Optional[str] = None, public_only: bool = False):
+    def query_stream(self, question: str, knowledge_base_id: Optional[str] = None, public_only: bool = False, sources_out: list = None):
         """
         流式查询 —— 边生成边输出（逐 token 返回）。
 
@@ -152,6 +152,9 @@ class RAGService:
         candidate_texts = [c["text"] for c in merged]
         reranked = self.query_pipeline.reranker.rerank(rewritten.original, candidate_texts, top_k=5)
         context_parts = [doc for _, doc, _ in reranked]
+        if sources_out is not None:
+            doc_ids = list({c.get("doc_id","") for c in merged if c.get("doc_id")})
+            sources_out.extend(doc_ids)
 
         # 构建 Prompt
         system_prompt = (
@@ -314,7 +317,7 @@ class RAGService:
         # 删除 Qdrant 中的向量数据
         self.store.delete_collection(kb_id)
         # 清除该 KB 的 BM25 缓存
-        self.query_pipeline.clear_bm25_cache(kb_id)
+        self._invalidate_bm25(kb_id)
         return True
 
     # =====================================================================
@@ -393,7 +396,7 @@ class RAGService:
             db.commit()
 
         # 重建 BM25 索引（新文档已入库，索引需要更新）
-        self.query_pipeline.clear_bm25_cache(kb_id)
+        self._invalidate_bm25(kb_id)
 
         if result.success:
             return DocumentUploadResponse(
@@ -406,7 +409,7 @@ class RAGService:
                 document_id=doc_id,
             )
 
-    def get_documents(self, kb_id: Optional[str] = None) -> List[Document]:
+    def get_documents(self, kb_id: Optional[str] = None, page: int = 1, page_size: int = 20) -> tuple:
         """
         获取文档列表（可选的按知识库过滤）。
 
@@ -416,6 +419,7 @@ class RAGService:
         """
         with SessionLocal() as db:
             stmt = select(DocumentModel)
+            count_stmt = select(func.count(DocumentModel.id))
             if kb_id:
                 # 先查知识库的内部 id
                 kb_row = db.execute(
@@ -423,10 +427,13 @@ class RAGService:
                 ).scalar_one_or_none()
                 if kb_row:
                     stmt = stmt.where(DocumentModel.knowledge_base_id == kb_row.id)
+                    count_stmt = count_stmt.where(DocumentModel.knowledge_base_id == kb_row.id)
 
+            total = db.execute(count_stmt).scalar() or 0
             stmt = stmt.order_by(DocumentModel.created_at.desc())
-            rows = db.execute(stmt).scalars().all()
-            return [self._doc_to_schema(row) for row in rows]
+            offset = (page - 1) * page_size
+            rows = db.execute(stmt.offset(offset).limit(page_size)).scalars().all()
+            return [self._doc_to_schema(row) for row in rows], total
 
     def delete_document(self, doc_id: str) -> bool:
         """
@@ -460,27 +467,31 @@ class RAGService:
 
         # 删除 Qdrant 中的向量
         self.ingest_pipeline.remove_document(kb_id, doc_id)
-        self.query_pipeline.clear_bm25_cache(kb_id)
+        self._invalidate_bm25(kb_id)
         return True
 
     # =====================================================================
     # 对话记录
     # =====================================================================
 
-    def get_conversations(self, kb_id: Optional[str] = None) -> List[RAGConversation]:
+    def get_conversations(self, kb_id: Optional[str] = None, page: int = 1, page_size: int = 20) -> tuple:
         """获取对话历史（可选的按知识库过滤）。"""
         with SessionLocal() as db:
             stmt = select(RAGConversationModel)
+            count_stmt = select(func.count(RAGConversationModel.id))
             if kb_id:
                 kb_row = db.execute(
                     select(KnowledgeBaseModel).where(KnowledgeBaseModel.kb_id == kb_id)
                 ).scalar_one_or_none()
                 if kb_row:
                     stmt = stmt.where(RAGConversationModel.knowledge_base_id == kb_row.id)
+                    count_stmt = count_stmt.where(RAGConversationModel.knowledge_base_id == kb_row.id)
 
+            total = db.execute(count_stmt).scalar() or 0
             stmt = stmt.order_by(RAGConversationModel.created_at.desc())
-            rows = db.execute(stmt).scalars().all()
-            return [self._conv_to_schema(row) for row in rows]
+            offset = (page - 1) * page_size
+            rows = db.execute(stmt.offset(offset).limit(page_size)).scalars().all()
+            return [self._conv_to_schema(row) for row in rows], total
 
     def evaluate_query(
         self,
@@ -508,6 +519,13 @@ class RAGService:
             ground_truth=ground_truth or "",
         )
         return eval_result
+
+    def _invalidate_bm25(self, kb_id: str) -> None:
+        """BM25 缓存自动失效：文档变更（增/删）时触发"""
+        import logging
+        logger = logging.getLogger("rag.service")
+        self.query_pipeline.clear_bm25_cache(kb_id)
+        logger.info(f"[BM25] auto-invalidated cache for kb={kb_id}")
 
     def save_conversation(
         self,

@@ -1,4 +1,4 @@
-﻿"""
+"""
 =============================================================================
 RAG 公开路由层 (Router) — 仅聊天查询与对话记录
 =============================================================================
@@ -7,9 +7,11 @@ RAG 公开路由层 (Router) — 仅聊天查询与对话记录
 本模块仅保留公开可用的：查询、知识库只读列表、对话记录。
 """
 
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException, Depends
 from fastapi.responses import StreamingResponse, JSONResponse
+import uuid
 
+from schemas.common import PaginationParams, PaginatedResult
 from schemas.rag import (
     RAGQueryRequest,
     RAGQueryResponse,
@@ -22,6 +24,7 @@ from services.rag_service import RAGService
 from utils.result import Result
 from rag.resilience import rate_limiter, init_rate_limiter, CircuitOpenError
 from core.config import settings
+from rag.monitor import RequestContext
 
 router = APIRouter()
 rag_service = RAGService()
@@ -38,6 +41,7 @@ if rate_limiter is None:
 @router.post("/query", response_model=Result[RAGQueryResponse])
 async def query_rag(request: RAGQueryRequest):
     """RAG 查询（非流式）"""
+    RequestContext.set_request_id(str(uuid.uuid4())[:8])
     if rate_limiter and not rate_limiter.consume():
         return JSONResponse(
             status_code=429,
@@ -67,6 +71,7 @@ async def query_rag(request: RAGQueryRequest):
 @router.post("/query/stream")
 async def query_rag_stream(request: RAGQueryRequest):
     """RAG 查询（SSE 流式输出）"""
+    RequestContext.set_request_id(str(uuid.uuid4())[:8])
     if rate_limiter and not rate_limiter.consume():
         return JSONResponse(
             status_code=429,
@@ -75,11 +80,13 @@ async def query_rag_stream(request: RAGQueryRequest):
 
     async def event_stream():
         full_answer = ""
+        sources_out: list[str] = []
         try:
             yield "data: [THINKING]正在检索知识库..."
 
             for token in rag_service.query_stream(
-                request.question, request.knowledge_base_id, public_only=True
+                request.question, request.knowledge_base_id, public_only=True,
+                sources_out=sources_out,
             ):
                 full_answer += token
                 yield f"data: {token}\n\n"
@@ -89,7 +96,7 @@ async def query_rag_stream(request: RAGQueryRequest):
                     kb_id=request.knowledge_base_id,
                     user_query=request.question,
                     answer=full_answer,
-                    sources=[],
+                    sources=sources_out,
                 )
             except Exception:
                 pass
@@ -118,15 +125,24 @@ async def query_rag_stream(request: RAGQueryRequest):
 @router.get("/knowledge-bases", response_model=Result[list[KnowledgeBase]])
 async def get_knowledge_bases():
     """获取所有公开知识库列表（只读，供聊天选择知识库）"""
+    RequestContext.set_request_id(str(uuid.uuid4())[:8])
     kbs = rag_service.get_knowledge_bases(public_only=True)
     return Result.ok(data=kbs, total=len(kbs))
 
 
-@router.get("/conversations", response_model=Result[list[RAGConversation]])
-async def get_conversations(kb_id: str = Query(None, description="知识库 ID 过滤")):
-    """获取对话记录"""
-    conversations = rag_service.get_conversations(kb_id)
-    return Result.ok(data=conversations, total=len(conversations))
+@router.get("/conversations", response_model=Result[PaginatedResult[RAGConversation]])
+async def get_conversations(
+    kb_id: str = Query(None, description="知识库 ID 过滤"),
+    pagination: PaginationParams = Depends(),
+):
+    """获取对话记录（分页）"""
+    RequestContext.set_request_id(str(uuid.uuid4())[:8])
+    items, total = rag_service.get_conversations(kb_id, page=pagination.page, page_size=pagination.page_size)
+    return Result.ok(data=PaginatedResult(
+        items=items, total=total,
+        page=pagination.page, page_size=pagination.page_size,
+        total_pages=(total + pagination.page_size - 1) // pagination.page_size
+    ))
 
 
 # =====================================================================
@@ -136,6 +152,7 @@ async def get_conversations(kb_id: str = Query(None, description="知识库 ID �
 @router.post("/evaluate", response_model=Result[RAGEvaluateResponse])
 async def evaluate_rag(request: RAGEvaluateRequest):
     """RAGAS 评估：运行查询并计算指标"""
+    RequestContext.set_request_id(str(uuid.uuid4())[:8])
     if rate_limiter and not rate_limiter.consume():
         return JSONResponse(
             status_code=429,
